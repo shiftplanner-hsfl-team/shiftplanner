@@ -1,0 +1,24 @@
+{% load static %}<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{% block title %}ShiftPlanner{% endblock %}</title><link rel="stylesheet" href="{% static 'planning/app.css' %}"><script src="{% static 'planning/app.js' %}" defer></script></head>
+<body><a class="skip" href="#main">Zum Inhalt</a>
+{% if user.is_authenticated %}
+<aside class="sidebar"><a class="brand" href="{% url 'dashboard' %}?month={{ month_value }}"><span class="brand-icon"><img src="{% static 'planning/icons/507c1.svg' %}" width="20" height="20" alt=""></span>ShiftPlanner</a><div class="branch"><small>NORDLICHT</small><strong>Filiale Flensburg ⌄</strong></div>
+<nav aria-label="Hauptnavigation">
+{% if planner %}
+<a href="{% url 'dashboard' %}?month={{ month_value }}" {% if request.resolver_match.url_name == 'dashboard' %}aria-current="page"{% endif %}><img src="{% static 'planning/icons/312c5.svg' %}" width="18" height="18" alt="">Übersicht</a>
+<a href="{% url 'demand' %}?month={{ month_value }}" {% if request.resolver_match.url_name == 'demand' %}aria-current="page"{% endif %}><img src="{% static 'planning/icons/312c5.svg' %}" width="18" height="18" alt="">Personalbedarf</a>
+<a href="{% url 'availability_overview' %}?month={{ month_value }}" {% if 'verfuegbarkeiten/' in request.path %}aria-current="page"{% endif %}><img src="{% static 'planning/icons/312c5.svg' %}" width="18" height="18" alt="">Verfügbarkeiten</a>
+<a href="{% url 'plan' %}?month={{ month_value }}" {% if '/plan/' in request.path %}aria-current="page"{% endif %}><img src="{% static 'planning/icons/312c5.svg' %}" width="18" height="18" alt="">Schichtplan</a>
+<a href="{% url 'templates' %}?month={{ month_value }}" {% if request.resolver_match.url_name == 'templates' %}aria-current="page"{% endif %}><img src="{% static 'planning/icons/312c5.svg' %}" width="18" height="18" alt="">Schichtvorlagen</a>
+<a href="{% url 'qualifications' %}?month={{ month_value }}" {% if request.resolver_match.url_name == 'qualifications' %}aria-current="page"{% endif %}><img src="{% static 'planning/icons/312c5.svg' %}" width="18" height="18" alt="">Qualifikationen</a>
+{% else %}
+<a href="{% url 'dashboard' %}?month={{ month_value }}" {% if request.resolver_match.url_name == 'dashboard' %}aria-current="page"{% endif %}><img src="{% static 'planning/icons/312c5.svg' %}" width="18" height="18" alt="">Mein Bereich</a><a href="{% url 'availability' %}?month={{ month_value }}" {% if request.resolver_match.url_name == 'availability' %}aria-current="page"{% endif %}><img src="{% static 'planning/icons/312c5.svg' %}" width="18" height="18" alt="">Verfügbarkeiten</a>
+{% endif %}</nav><div class="sidebar-bottom"><div class="motto"><strong>Gemeinsam gut geplant.</strong><small>Klarer Bedarf. Klare Wünsche.</small></div><div class="profile"><span class="avatar">{{ initials }}</span><div><strong>{{ display_name }}</strong><small>{% if planner %}Planung{% else %}Mitarbeitende{% endif %}</small></div></div><form action="{% url 'logout' %}" method="post">{% csrf_token %}<button class="logout">Abmelden</button></form></div></aside>
+<header class="mobile-header"><a class="brand" href="{% url 'dashboard' %}"><img src="{% static 'planning/icons/9bc24.svg' %}" width="24" height="24" alt="">ShiftPlanner</a><form action="{% url 'logout' %}" method="post">{% csrf_token %}<button class="avatar" title="Abmelden">{{ initials }}</button></form></header>
+{% endif %}
+<main id="main" class="{% if not user.is_authenticated %}login-main{% endif %}">
+{% if user.is_authenticated %}<div class="eyebrow"><span>{% if planner %}PLANUNGSBEREICH{% else %}MEIN ARBEITSALLTAG{% endif %}</span><span class="badge">MVP · Demo</span></div>{% endif %}
+{% for message in messages %}<div class="message {{ message.tags }}" role="status">{{ message }}</div>{% endfor %}
+{% block content %}{% endblock %}</main>
+{% if user.is_authenticated %}<nav class="mobile-nav" aria-label="Mobile Navigation"><a href="{% url 'dashboard' %}"><img src="{% static 'planning/icons/f6cf7.svg' %}" width="20" height="20" alt="">Start</a><a href="{% if planner %}{% url 'demand' %}{% else %}{% url 'availability' %}{% endif %}"><img src="{% static 'planning/icons/ae962.svg' %}" width="20" height="20" alt="">{% if planner %}Bedarf{% else %}Verfügbarkeit{% endif %}</a>{% if planner %}<a href="{% url 'plan' %}">Schichtplan</a>{% endif %}</nav>{% endif %}
+</body></html>
