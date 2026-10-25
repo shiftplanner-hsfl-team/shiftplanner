@@ -1,0 +1,33 @@
+name: Anforderung / User Story
+description: Funktionale Anforderung (REQ) mit Use-Case-Bezug
+title: "REQ-xx: "
+labels: ["requirement"]
+body:
+  - type: input
+    id: id
+    attributes: {label: ID, placeholder: REQ-xx}
+    validations: {required: true}
+  - type: input
+    id: usecase
+    attributes: {label: Use Case (+ Schritt), placeholder: "UC-03, Schritt 2"}
+  - type: textarea
+    id: story
+    attributes: {label: User Story, placeholder: "Als <Rolle> möchte ich <Ziel>, damit <Nutzen>."}
+    validations: {required: true}
+  - type: textarea
+    id: kriterien
+    attributes: {label: Akzeptanzkriterien, placeholder: "Gegeben … Wenn … Dann …"}
+  - type: textarea
+    id: begruendung
+    attributes: {label: Begründung}
+  - type: input
+    id: stakeholder
+    attributes: {label: Stakeholder}
+  - type: input
+    id: quelle
+    attributes: {label: Quelle, placeholder: "FB-xx / Team / Feedback P2"}
+  - type: dropdown
+    id: umsetzung
+    attributes:
+      label: Umsetzung
+      options: [MVP, Sprint 1, Sprint 2, Sprint 3, später]
