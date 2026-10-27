@@ -9,7 +9,7 @@ Fachliche Grundlage: bereitgestellte Projektzusammenfassung vom 25.10.2026.
 
 ## Lokal starten
 
-Voraussetzung: PytPython 3.12 oder neueramit wurde dieser Stand geprüft). SQLite ist enthalten.
+Voraussetzung: Python 3.12 oder neuer. SQLite ist enthalten.
 Kein Node.js, Cloudkonto oder KI-Schlüssel erforderlich.
 
 ```bash
