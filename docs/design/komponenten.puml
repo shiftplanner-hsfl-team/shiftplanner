@@ -1,0 +1,48 @@
+@startuml
+skinparam componentStyle rectangle
+skinparam backgroundColor #FEFEFE
+skinparam componentBackgroundColor #E3F2FD
+skinparam componentBorderColor #1976D2
+skinparam componentFontColor #000000
+
+title ShiftPlanner - Komponentenübersicht (Schichtenarchitektur)
+
+package "1. Darstellung" {
+  [Templates\n(Django Templates)] as templates
+  [Static Files\n(CSS, JS)] as static
+}
+
+package "2. Zugriff und Abläufe" {
+  [Views\n(urls.py, views.py)] as views
+  [Forms\n(forms.py)] as forms
+}
+
+package "3. Planung" {
+  [Services\n(services.py)] as services
+  [Regelmodul\n(geplant: RB-01)] as rules <<dashed>>
+}
+
+package "4. Persistenz" {
+  [Models\n(models.py)] as models
+  [Datenbank\n(SQLite)] as database
+}
+
+templates --> views : HTTP Request
+views --> forms : Validierung
+views --> services : Aufruf
+services --> rules : Regelprüfung <<dashed>>
+services --> models : Datenzugriff
+models --> database : ORM
+
+note right of services
+  Information Hiding:
+  Views rufen Service-Funktionen auf,
+  kennen den Algorithmus nicht
+end note
+
+note right of rules
+  Erweiterungspunkt
+  für Sprint 1 (ArbZG)
+end note
+
+@enduml
