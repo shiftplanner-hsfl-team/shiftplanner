@@ -1,0 +1,42 @@
+@startuml
+title Aktivitätsdiagramm: Monatsablauf
+
+|Führungskraft|
+start
+:Führungskraft legt\nBedarf fest\n(Schichtvorlagen,\nQualifikationen);
+:Führungskraft legt\nUrlaube fest;
+
+|Mitarbeitende|
+fork
+  :Mitarbeitende\ntragen Verfügbar-\nkeiten ein\n(Prio 1-3);
+  :Mitarbeitende\ngeben Verfügbar-\nkeit ab;
+fork again
+  :Mitarbeitende\ntragen Urlaub ein;
+end fork
+
+|System|
+:Alle Abgaben\nvorhanden?;
+
+if (Ja) then (nein)
+  :Warten auf\nAbgaben;
+  :Plan markiert\nals "unvollständig";
+else (ja)
+  :Plan erzeugen\n(services.py);
+  :Plan als\nSnapshot speichern;
+endif
+
+|Führungskraft|
+:Führungskraft\nprüft Plan;
+
+if (Korrektur nötig?) then (ja)
+  :Führungskraft korrigiert\nmanuell (Sprint 1);
+else (nein)
+endif
+
+:Führungskraft\nveröffentlicht Plan;
+
+:Mitarbeitende\nsehen ihren Plan\n(nur lesbar);
+
+stop
+
+@enduml
