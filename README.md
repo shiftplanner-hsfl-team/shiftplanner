@@ -88,6 +88,8 @@ vollständige Abnahme aller ursprünglichen Anforderungs-IDs wird nicht behaupte
 ```bash
 python -m pip install -r requirements-dev.txt
 python -m playwright install chromium
+ruff format --check .
+ruff check .
 python manage.py check
 python manage.py makemigrations --check --dry-run
 python manage.py test apps.planning
