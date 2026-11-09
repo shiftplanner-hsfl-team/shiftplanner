@@ -21,6 +21,7 @@ urlpatterns = [
     path('zeitraum/', views.period, name='period'),
     path('bedarf/', views.demand, name='demand'),
     path('vorlagen/', views.templates, name='templates'),
+    path('mitarbeitende/', views.employees, name='employees'),
     path('qualifikationen/', views.qualifications, name='qualifications'),
     path('verfuegbarkeiten/', views.availability_overview, name='availability_overview'),
     path('meine-verfuegbarkeiten/', views.availability, name='availability'),

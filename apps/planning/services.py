@@ -10,6 +10,7 @@ from datetime import date, timedelta
 from time import perf_counter
 
 from django.conf import settings
+from django.contrib.auth.models import User
 from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
@@ -147,6 +148,40 @@ def set_deadline(month, deadline):
     month.deadline = deadline
     month.save(update_fields=['deadline'])
     touch(month)
+
+
+@transaction.atomic
+def save_employee(data, employee=None):
+    """Legt eine Person mit Konto an oder aktualisiert sie (REQ-02 AK 1, AK 3).
+
+    Bestehende Pläne bleiben unverändert, weil sie Namen und Rollen als Snapshot
+    speichern; alle Monate werden als geändert markiert, damit der nächste Plan
+    die neuen Angaben verwendet.
+
+    Args:
+        data: Bereinigte Daten aus ``EmployeeForm``.
+        employee: Bestehende Person oder ``None`` zum Anlegen.
+
+    Returns:
+        Gespeichertes ``Employee``-Objekt.
+    """
+    if employee is None:
+        user = User.objects.create_user(data['email'], data['email'], data['password'])
+        employee = Employee(user=user)
+    else:
+        user = employee.user
+        user.username = user.email = data['email']
+        if data['password']:
+            user.set_password(data['password'])
+    user.first_name, user.last_name = data['first_name'], data['last_name']
+    user.save()
+    employee.contract_type = data['contract_type']
+    employee.weekly_hours = data['weekly_hours']
+    employee.save()
+    employee.qualifications.set(data['qualifications'])
+    for month in Month.objects.select_for_update():
+        touch(month)
+    return employee
 
 
 def touch(month):

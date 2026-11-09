@@ -9,7 +9,7 @@ from .models import Employee, Qualification, ShiftTemplate, Vacation
 class EmployeeAdmin(admin.ModelAdmin):
     """Verwaltung der Mitarbeitendenprofile mit Qualifikationsauswahl."""
 
-    list_display = ['user']
+    list_display = ['user', 'contract_type', 'weekly_hours']
     filter_horizontal = ['qualifications']
 
 
