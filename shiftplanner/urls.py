@@ -20,6 +20,7 @@ urlpatterns = [
     path('', views.dashboard, name='dashboard'),
     path('zeitraum/', views.period, name='period'),
     path('bedarf/', views.demand, name='demand'),
+    path('oeffnungstage/', views.opening, name='opening'),
     path('vorlagen/', views.templates, name='templates'),
     path('mitarbeitende/', views.employees, name='employees'),
     path('qualifikationen/', views.qualifications, name='qualifications'),

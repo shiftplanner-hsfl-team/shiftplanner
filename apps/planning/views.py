@@ -19,7 +19,14 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
 from . import rules
-from .forms import DeadlineForm, EmployeeForm, QualificationForm, TemplateForm, VacationForm
+from .forms import (
+    DeadlineForm,
+    EmployeeForm,
+    OpeningForm,
+    QualificationForm,
+    TemplateForm,
+    VacationForm,
+)
 from .models import (
     Availability,
     Employee,
@@ -28,7 +35,6 @@ from .models import (
     Plan,
     Qualification,
     ShiftTemplate,
-    Slot,
     Submission,
     Vacation,
 )
@@ -38,14 +44,18 @@ from .services import (
     generate_plan,
     input_open,
     month_label,
+    month_slots,
+    open_days,
     period_status,
     readiness,
     save_employee,
     set_deadline,
+    set_opening,
     touch,
 )
 
 PLANNER_GROUP = 'Planung'
+WEEKDAY_SHORT = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
 MAX_PER_SLOT = 30
 
 
@@ -137,11 +147,7 @@ def context(request):
     day = parse_month(raw)
     month, _ = Month.objects.get_or_create(date=day)
     ensure_slots(month)
-    slots = (
-        Slot.objects.filter(month=month)
-        .select_related('template')
-        .prefetch_related('needs__qualification')
-    )
+    slots = month_slots(month).select_related('template').prefetch_related('needs__qualification')
     dates = sorted({s.date for s in slots})
     weeks = sorted({d.isocalendar().week for d in dates})
     week = selected_week(request, weeks)
@@ -370,7 +376,62 @@ def demand(request, ctx):
         }
 
     ctx['rows'] = table_rows(ctx, values)
+    ctx['opening_form'] = OpeningForm(month=ctx['month'])
+    ctx['opening_summary'] = opening_summary(ctx['month'])
     return render(request, 'planning/demand.html', ctx)
+
+
+def opening_summary(month):
+    """Beschreibt die Öffnungstage eines Monats in einem Satz für die Oberfläche.
+
+    Args:
+        month: Planungsmonat.
+
+    Returns:
+        Text, z. B. „Mo–Sa geöffnet · zusätzlich geöffnet: 06.12.“.
+    """
+    names = [WEEKDAY_SHORT[int(d)] for d in month.open_weekdays]
+    text = ', '.join(names) + ' geöffnet'
+    extra = [d for d in month.day_exceptions.all() if d.is_open]
+    closed = [d for d in month.day_exceptions.all() if not d.is_open]
+    if extra:
+        text += ' · zusätzlich geöffnet: ' + ', '.join(f'{d.date:%d.%m.}' for d in extra)
+    if closed:
+        text += ' · geschlossen: ' + ', '.join(f'{d.date:%d.%m.}' for d in closed)
+    return text
+
+
+@planner_only
+@with_context
+def opening(request, ctx):
+    """Öffnungstage des Planungsmonats festlegen, z. B. einen Sonntag öffnen (REQ-22).
+
+    Nur POST; danach Rückkehr zur Bedarfsseite.
+    """
+    if request.method != 'POST':
+        return go('demand', ctx)
+    form = OpeningForm(request.POST, month=ctx['month'])
+    if not form.is_valid():
+        for errors in form.errors.values():
+            for error in errors:
+                messages.error(request, error)
+        return go('demand', ctx)
+    data = form.cleaned_data
+    try:
+        set_opening(
+            ctx['month'],
+            [int(d) for d in data['weekdays']],
+            data['day'],
+            data['day_state'] == 'open' if data['day'] else None,
+        )
+    except ValueError as error:
+        messages.error(request, str(error))
+        return go('demand', ctx)
+    messages.success(
+        request,
+        f'Öffnungstage gespeichert: {len(open_days(ctx["month"]))} Tage im {ctx["month_label"]}.',
+    )
+    return go('demand', ctx)
 
 
 @planner_only
