@@ -109,6 +109,10 @@ LANGUAGE_CODE = 'de'
 
 TIME_ZONE = 'Europe/Berlin'
 
+# Optional: festes Datum für Demo und Tests (JJJJ-MM-TT), z. B. um die Eingabephase
+# vor der Abgabefrist zu zeigen. Leer = tatsächliches Tagesdatum.
+SHIFTPLANNER_TODAY = os.environ.get('SHIFTPLANNER_TODAY') or None
+
 USE_I18N = True
 
 USE_TZ = True

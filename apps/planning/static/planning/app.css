@@ -30,3 +30,4 @@
 .plan-table .plan-cell strong{display:block;font-weight:500}
 .plan-table .plan-cell .missing{padding:0;background:transparent}
 .plan-table .plan-cell small{margin-top:4px}
+.period-form{display:grid;gap:10px}.period-form label{color:#fff;font-size:12px}.period-form input{color:var(--ink)}

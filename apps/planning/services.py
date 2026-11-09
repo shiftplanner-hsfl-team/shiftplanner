@@ -9,8 +9,10 @@ from collections import defaultdict
 from datetime import date, timedelta
 from time import perf_counter
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import F
+from django.utils import timezone
 
 from .models import (
     Assignment,
@@ -86,6 +88,67 @@ def ensure_slots(month):
     )
 
 
+def today():
+    """Liefert das aktuelle Datum in der Zeitzone des Betriebs.
+
+    Ist ``settings.SHIFTPLANNER_TODAY`` gesetzt (Demo, Tests), wird dieses Datum verwendet.
+
+    Returns:
+        Heutiges Datum als ``date``.
+    """
+    if settings.SHIFTPLANNER_TODAY:
+        return date.fromisoformat(settings.SHIFTPLANNER_TODAY)
+    return timezone.localdate()
+
+
+PERIOD_CLOSED, PERIOD_OPEN, PERIOD_EXPIRED = 'nicht geöffnet', 'offen', 'geschlossen'
+
+
+def period_status(month):
+    """Bestimmt den Status des Planungszeitraums (REQ-05).
+
+    Args:
+        month: Planungsmonat.
+
+    Returns:
+        ``PERIOD_CLOSED`` ohne Frist, ``PERIOD_OPEN`` bis einschließlich zum Fristtag,
+        danach ``PERIOD_EXPIRED``.
+    """
+    if month.deadline is None:
+        return PERIOD_CLOSED
+    return PERIOD_OPEN if today() <= month.deadline else PERIOD_EXPIRED
+
+
+def input_open(month):
+    """Prüft, ob Mitarbeitende Verfügbarkeiten eintragen dürfen (REQ-05 AK 3, REQ-07 AK 2).
+
+    Args:
+        month: Planungsmonat.
+
+    Returns:
+        True nur bei geöffnetem Zeitraum vor Ablauf der Frist.
+    """
+    return period_status(month) == PERIOD_OPEN
+
+
+@transaction.atomic
+def set_deadline(month, deadline):
+    """Öffnet den Planungszeitraum bzw. ändert seine Abgabefrist (REQ-05 AK 1–2).
+
+    Args:
+        month: Planungsmonat.
+        deadline: Neue Abgabefrist als ``date``.
+
+    Raises:
+        ValueError: Wenn die Frist nicht vor dem Beginn des Zeitraums liegt.
+    """
+    if deadline >= month.date:
+        raise ValueError('Die Abgabefrist muss vor dem Beginn des Planungszeitraums liegen.')
+    month.deadline = deadline
+    month.save(update_fields=['deadline'])
+    touch(month)
+
+
 def touch(month):
     """Erhöht den Revisionszähler; ein vorhandener Plan gilt danach als veraltet.
 
@@ -102,9 +165,16 @@ def readiness(month):
     Args:
         month: Planungsmonat.
 
+    Der Plan ist erzeugbar, wenn der Bedarf gespeichert ist und entweder alle aktiven
+    Mitarbeitenden abgegeben haben (REQ-05 AK 4) oder die Abgabefrist abgelaufen ist
+    (REQ-05 AK 3); fehlende Abgaben gelten dann als „nicht verfügbar“ (REQ-06 AK 3).
+
+    Args:
+        month: Planungsmonat.
+
     Returns:
-        Dictionary mit Anzahl abgegebener und aktiver Mitarbeitender, Anzahl Positionen
-        und ``ready`` (True, wenn Bedarf gespeichert ist und alle abgegeben haben).
+        Dictionary mit Anzahl abgegebener, aktiver und fehlender Mitarbeitender, Anzahl
+        Positionen, Zeitraumstatus, ``expired`` und ``ready``.
     """
     employees = Employee.objects.filter(user__is_active=True)
     submitted = Submission.objects.filter(
@@ -112,11 +182,17 @@ def readiness(month):
     ).count()
     total = employees.count()
     positions = sum(Slot.objects.filter(month=month).values_list('total', flat=True))
+    status = period_status(month)
+    expired = status == PERIOD_EXPIRED
+    inputs_complete = submitted == total or expired
     return dict(
         submitted=submitted,
         employees=total,
+        missing=total - submitted,
         positions=positions,
-        ready=bool(month.demand_saved and positions and total and submitted == total),
+        status=status,
+        expired=expired,
+        ready=bool(month.demand_saved and positions and total and inputs_complete),
     )
 
 
@@ -241,8 +317,9 @@ def match_positions(roles, candidates, priorities):
 def generate_plan(month):
     """Erzeugt den Schichtplan eines Monats und speichert ihn als Snapshot (REQ-08, REQ-09).
 
-    Slots werden chronologisch bearbeitet. Personen im Urlaub oder mit zeitlich
-    überlappender Schicht werden ausgeschlossen; nicht besetzbare Positionen bleiben
+    Slots werden chronologisch bearbeitet. Berücksichtigt werden nur abgegebene
+    Verfügbarkeiten (REQ-07). Personen im Urlaub oder mit zeitlich überlappender
+    Schicht werden ausgeschlossen; nicht besetzbare Positionen bleiben
     als „unbesetzt“ (``employee=None``) im Plan.
 
     Args:
@@ -258,7 +335,8 @@ def generate_plan(month):
     month = Month.objects.select_for_update().get(pk=month.pk)
     if not readiness(month)['ready']:
         raise ValueError(
-            'Bedarf speichern und alle Verfügbarkeiten abgeben, bevor du den Plan erzeugst.'
+            'Bedarf speichern und alle Verfügbarkeiten abwarten (oder Fristablauf), '
+            'bevor du den Plan erzeugst.'
         )
     slots = list(
         Slot.objects.filter(month=month, total__gt=0)
@@ -272,9 +350,13 @@ def generate_plan(month):
         .prefetch_related('qualifications')
     }
     qualifications = {pk: {q.pk for q in e.qualifications.all()} for pk, e in employees.items()}
+    # Nur abgegebene Angaben zählen; ohne Abgabe gilt eine Person als nicht verfügbar.
+    submitted = Submission.objects.filter(
+        month=month, submitted=True, employee_id__in=employees
+    ).values_list('employee_id', flat=True)
     available = defaultdict(dict)
     for a in Availability.objects.filter(
-        slot__month=month, priority__gt=0, employee_id__in=employees
+        slot__month=month, priority__gt=0, employee_id__in=list(submitted)
     ):
         available[a.slot_id][a.employee_id] = a.priority
     vacations = list(

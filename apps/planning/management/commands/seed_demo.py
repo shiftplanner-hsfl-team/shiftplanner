@@ -61,7 +61,9 @@ class Command(BaseCommand):
             ('Spätschicht', time(14), time(20), 'Für Verkauf und Abschluss'),
         ]:
             ShiftTemplate.objects.create(name=name, start=start, end=end, description=desc)
-        month = Month.objects.create(date=date(2026, 11, 1), demand_saved=True)
+        month = Month.objects.create(
+            date=date(2026, 11, 1), demand_saved=True, deadline=date(2026, 10, 28)
+        )
         ensure_slots(month)
         slots = list(Slot.objects.filter(month=month).select_related('template'))
         for slot in slots:
@@ -113,5 +115,6 @@ class Command(BaseCommand):
             'Planung: nora.krueger@example.com | Mitarbeitende: lea.meyer@example.com'
         )
         self.stdout.write(
-            'Demo-Passwort: ShiftDemo2026! | Ben und Eva haben noch nicht abgegeben.'
+            'Demo-Passwort: ShiftDemo2026! | Ben und Eva haben noch nicht abgegeben. '
+            'Abgabefrist: 28.10.2026.'
         )
