@@ -1,6 +1,7 @@
 """Planungslogik von ShiftPlanner: Monatsaufbau, Vorbedingungen und deterministische Zuordnung.
 
 Die Funktionen sind unabhängig von HTTP und werden von ``views.py`` aufgerufen.
+Rahmenbedingungen (ArbZG, Feiertage) liegen im Regelmodul ``rules.py``.
 Fairness-Regeln sind noch nicht enthalten (REQ-16, später).
 """
 
@@ -15,6 +16,7 @@ from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
 
+from . import rules
 from .models import (
     Assignment,
     Availability,
@@ -26,6 +28,7 @@ from .models import (
     Submission,
     Vacation,
 )
+from .rules import Shift
 
 MONTH_NAMES = [
     'Januar',
@@ -348,14 +351,71 @@ def match_positions(roles, candidates, priorities):
     return result
 
 
+def overlaps(shift, other):
+    """Prüft, ob sich zwei Schichten zeitlich überschneiden (angrenzend ist erlaubt).
+
+    Args:
+        shift: Erste ``Shift``.
+        other: Zweite ``Shift``.
+
+    Returns:
+        True bei Überschneidung.
+    """
+    return shift.begins < other.ends and other.begins < shift.ends
+
+
+def is_eligible(shift, assigned, vacations):
+    """Filtert Kandidaten einer Schicht: Urlaub, Überschneidung und RB-01 (Erweiterungspunkt).
+
+    Args:
+        shift: Zu besetzende ``Shift``.
+        assigned: Bereits zugewiesene Schichten der Person im Monat.
+        vacations: Urlaube der Person.
+
+    Returns:
+        True, wenn die Person die Schicht übernehmen darf.
+    """
+    if any(v.start <= shift.day <= v.end for v in vacations):
+        return False
+    if any(overlaps(shift, other) for other in assigned):
+        return False
+    return rules.is_allowed(assigned, shift)
+
+
+def assignment_violations(plan, employee, slot):
+    """Prüft eine manuelle Zuweisung gegen RB-01 (für REQ-11, manuelle Korrektur).
+
+    Berücksichtigt alle übrigen Zuweisungen der Person im selben Plan.
+
+    Args:
+        plan: Gespeicherter ``Plan``.
+        employee: ``Employee``, die zugewiesen werden soll.
+        slot: ``Slot`` der Position.
+
+    Returns:
+        Liste verständlicher Meldungen (leer = zulässig); Überschneidungen zuerst.
+    """
+    shift = Shift(slot.date, slot.template.start, slot.template.end)
+    assigned = [
+        Shift(a.date, a.start, a.end)
+        for a in plan.assignments.filter(employee=employee).exclude(slot=slot)
+    ]
+    messages = [
+        f'Überschneidung mit einer anderen Schicht am {other.day:%d.%m.}.'
+        for other in assigned
+        if overlaps(shift, other)
+    ]
+    return messages + rules.violations(assigned, shift)
+
+
 @transaction.atomic
 def generate_plan(month):
     """Erzeugt den Schichtplan eines Monats und speichert ihn als Snapshot (REQ-08, REQ-09).
 
     Slots werden chronologisch bearbeitet. Berücksichtigt werden nur abgegebene
-    Verfügbarkeiten (REQ-07). Personen im Urlaub oder mit zeitlich überlappender
-    Schicht werden ausgeschlossen; nicht besetzbare Positionen bleiben
-    als „unbesetzt“ (``employee=None``) im Plan.
+    Verfügbarkeiten (REQ-07). Personen im Urlaub, mit zeitlich überlappender Schicht
+    oder bei einem Verstoß gegen das Arbeitszeitgesetz (RB-01) werden ausgeschlossen;
+    nicht besetzbare Positionen bleiben als „unbesetzt“ (``employee=None``) im Plan.
 
     Args:
         month: Planungsmonat.
@@ -406,14 +466,11 @@ def generate_plan(month):
             raise ValueError('Der Besetzungsmix übersteigt die Gesamtzahl eines Slots.')
         roles = [(n.qualification_id, n.qualification.name) for n in needs for _ in range(n.count)]
         roles += [(None, 'Ohne Vorgabe')] * (slot.total - len(roles))
+        shift = Shift(slot.date, slot.template.start, slot.template.end)
         priorities = {
             pk: priority
             for pk, priority in available[slot.pk].items()
-            if not any(v.employee_id == pk and v.start <= slot.date <= v.end for v in vacations)
-            and not any(
-                day == slot.date and start < slot.template.end and slot.template.start < end
-                for day, start, end in busy[pk]
-            )
+            if is_eligible(shift, busy[pk], [v for v in vacations if v.employee_id == pk])
         }
         candidates = [
             [pk for pk in sorted(priorities) if q is None or q in qualifications[pk]]
@@ -423,7 +480,7 @@ def generate_plan(month):
         for i, (_, role) in enumerate(roles):
             emp_id = matches.get(i)
             if emp_id:
-                busy[emp_id].append((slot.date, slot.template.start, slot.template.end))
+                busy[emp_id].append(shift)
             rows.append(
                 Assignment(
                     slot=slot,

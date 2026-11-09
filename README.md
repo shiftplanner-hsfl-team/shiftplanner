@@ -89,12 +89,14 @@ Mockup-Zahlen 72 / 216 werden nicht als echte Berechnung ausgegeben.
 ## Bewusste MVP-Grenzen
 
 Ein Betrieb pro Installation, standardmäßig Montag bis Samstag. Nachtvorlagen
-über Mitternacht sind noch nicht unterstützt. Konten werden durch die
-Administration angelegt; eine öffentliche Registrierung ist nicht enthalten.
+über Mitternacht sind noch nicht unterstützt. Konten legt die Planung
+unter **Mitarbeitende** an; eine öffentliche Registrierung ist nicht enthalten.
 
 Manuelle Plankorrektur, Freigabe/Veröffentlichung, KI-Erklärungen,
 Fairness-Verlauf, Krankmeldung und Schichttausch folgen später. Die Engine
-enthält **noch keine ArbZG-/Feiertagsprüfung**. Der Prototyp dient der
+prüft seit Sprint 1 die Grenzen des Arbeitszeitgesetzes (10 h/Tag, 48 h/Woche,
+11 h Ruhezeit, Pausen) und kennzeichnet die Feiertage in Schleswig-Holstein
+(`apps/planning/rules.py`). Der Prototyp dient der
 Demonstration und Erprobung, nicht einem betrieblich freigegebenen Dienstplan.
 Die vollständigen Kursunterlagen und REQ-/QR-Texte lagen nicht vor; eine
 vollständige Abnahme aller ursprünglichen Anforderungs-IDs wird nicht behauptet.

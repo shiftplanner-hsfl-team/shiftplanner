@@ -5,6 +5,7 @@ from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.test import Client, TestCase, override_settings
 
+from . import rules
 from .models import (
     Assignment,
     Availability,
@@ -18,7 +19,8 @@ from .models import (
     Submission,
     Vacation,
 )
-from .services import generate_plan, match_positions, readiness
+from .rules import Shift
+from .services import assignment_violations, generate_plan, match_positions, readiness
 
 FAST_PASSWORDS = ['django.contrib.auth.hashers.MD5PasswordHasher']
 
@@ -258,7 +260,8 @@ class EngineTests(TestCase):
 
     def test_overlap_excluded_and_adjacent_allowed(self):
         emp = self.employee('one')
-        for name, start, end in [('Tag', time(10), time(16)), ('Spät', time(14), time(20))]:
+        # Spät 14–18 grenzt an Früh 8–14 an; zusammen 10 h, also auch nach RB-01 zulässig.
+        for name, start, end in [('Tag', time(10), time(16)), ('Spät', time(14), time(18))]:
             template = ShiftTemplate.objects.create(name=name, start=start, end=end)
             slot = Slot.objects.create(
                 month=self.month, date=self.slot.date, template=template, total=1
@@ -507,3 +510,117 @@ class EmployeeManagementTests(TestCase):
         employee.login(username='lea.meyer@example.com', password='ShiftDemo2026!')
         self.assertEqual(employee.get('/mitarbeitende/').status_code, 403)
         self.assertEqual(employee.post('/mitarbeitende/', self.valid_data()).status_code, 403)
+
+
+class ArbZGRuleTests(TestCase):
+    """RB-01: Grenzen des Arbeitszeitgesetzes im Regelmodul (ohne Datenbank)."""
+
+    def shift(self, day, start, end):
+        return Shift(date(2026, 11, day), time(start), time(end))
+
+    def test_break_and_working_hours_par_4(self):
+        self.assertEqual(rules.required_break_minutes(self.shift(2, 8, 14)), 0)
+        self.assertEqual(rules.required_break_minutes(self.shift(2, 8, 15)), 30)
+        self.assertEqual(rules.required_break_minutes(self.shift(2, 8, 18)), 45)
+        self.assertEqual(rules.working_hours(self.shift(2, 8, 18)), 9.25)
+
+    def test_daily_maximum_10_hours_par_3(self):
+        early = self.shift(2, 6, 12)
+        self.assertTrue(rules.is_allowed([early], self.shift(2, 12, 16)))
+        messages = rules.violations([early], self.shift(2, 12, 18))
+        self.assertEqual(len(messages), 1)
+        self.assertIn('§ 3', messages[0])
+
+    def test_rest_period_11_hours_par_5(self):
+        late = self.shift(2, 14, 22)
+        self.assertIn('§ 5', rules.violations([late], self.shift(3, 8, 14))[0])
+        self.assertTrue(rules.is_allowed([late], self.shift(3, 9, 15)))
+        # Auch rückwärts: eine spätere Schicht am Folgetag ist bereits geplant.
+        self.assertFalse(rules.is_allowed([self.shift(3, 6, 12)], self.shift(2, 14, 20)))
+
+    def test_weekly_maximum_48_hours(self):
+        week = [self.shift(day, 8, 16) for day in range(2, 8)]  # Mo–Sa je 7,5 h = 45 h
+        self.assertTrue(rules.is_allowed(week[:5], week[5]))
+        messages = rules.violations(week, self.shift(7, 17, 21))
+        self.assertTrue(any('KW 45' in m for m in messages))
+        self.assertIn('11,5 h', messages[0])
+
+    def test_holidays_schleswig_holstein_rb_03(self):
+        self.assertEqual(rules.easter_sunday(2026), date(2026, 4, 5))
+        self.assertEqual(rules.holiday_name(date(2026, 4, 3)), 'Karfreitag')
+        self.assertEqual(rules.holiday_name(date(2026, 5, 14)), 'Christi Himmelfahrt')
+        self.assertEqual(rules.holiday_name(date(2026, 10, 31)), 'Reformationstag')
+        self.assertEqual(rules.holiday_name(date(2026, 11, 18)), '')  # Buß- und Bettag: nur SN
+        self.assertEqual(len(rules.holidays(2027)), 10)
+
+
+class ArbZGPlanningTests(TestCase):
+    """RB-01 in der Planerzeugung und für die manuelle Korrektur (REQ-11)."""
+
+    def setUp(self):
+        self.month = Month.objects.create(date=date(2026, 11, 1), demand_saved=True)
+        self.user = User.objects.create_user('one')
+        self.emp = Employee.objects.create(user=self.user)
+        Submission.objects.create(employee=self.emp, month=self.month, submitted=True)
+
+    def slot(self, day, start, end, name):
+        template, _ = ShiftTemplate.objects.get_or_create(
+            name=name, defaults={'start': time(start), 'end': time(end)}
+        )
+        slot = Slot.objects.create(
+            month=self.month, date=date(2026, 11, day), template=template, total=1
+        )
+        Availability.objects.create(employee=self.emp, slot=slot, priority=1)
+        return slot
+
+    def test_plan_respects_daily_maximum(self):
+        self.slot(2, 8, 14, 'Früh')
+        self.slot(2, 14, 20, 'Spät')
+        plan = generate_plan(self.month)
+        self.assertEqual(plan.assignments.get(shift_name='Früh').employee, self.emp)
+        self.assertIsNone(plan.assignments.get(shift_name='Spät').employee)
+
+    def test_plan_respects_rest_period(self):
+        self.slot(2, 14, 22, 'Spät lang')
+        self.slot(3, 6, 12, 'Früh kurz')
+        plan = generate_plan(self.month)
+        self.assertEqual(plan.assignments.get(shift_name='Spät lang').employee, self.emp)
+        self.assertIsNone(plan.assignments.get(shift_name='Früh kurz').employee)
+
+    def test_assignment_violations_for_manual_correction(self):
+        early = self.slot(2, 8, 14, 'Früh')
+        late = self.slot(2, 14, 20, 'Spät')
+        plan = generate_plan(self.month)
+        self.assertEqual(assignment_violations(plan, self.emp, early), [])
+        messages = assignment_violations(plan, self.emp, late)
+        self.assertEqual(len(messages), 1)
+        self.assertIn('Mehr als 10 Stunden', messages[0])
+
+
+@override_settings(PASSWORD_HASHERS=FAST_PASSWORDS, DEBUG=True, SHIFTPLANNER_TODAY=DEMO_TODAY)
+class HolidayCalendarTests(TestCase):
+    """RB-03: Feiertage gekennzeichnet und standardmäßig ohne Bedarf."""
+
+    def setUp(self):
+        call_command('seed_demo', verbosity=0)
+        self.client.login(username='nora.krueger@example.com', password='ShiftDemo2026!')
+
+    def test_holidays_marked_and_skipped_when_copying_week(self):
+        response = self.client.get('/bedarf/?month=2026-12&week=52')
+        self.assertContains(response, '1. Weihnachtstag')
+        december = Month.objects.get(date=date(2026, 12, 1))
+        week = Slot.objects.filter(
+            month=december, date__range=[date(2026, 12, 14), date(2026, 12, 19)]
+        )
+        data = {'month': '2026-12', 'action': 'copy_month'}
+        data.update({f'total_{s.pk}': '2' for s in week})
+        self.client.post('/bedarf/?month=2026-12&week=51', data)
+        self.assertEqual(
+            Slot.objects.get(date=date(2026, 12, 21), template__name='Frühschicht').total, 2
+        )
+        self.assertEqual(
+            Slot.objects.get(date=date(2026, 12, 25), template__name='Frühschicht').total, 0
+        )
+        self.assertEqual(
+            Slot.objects.get(date=date(2026, 12, 26), template__name='Frühschicht').total, 0
+        )
