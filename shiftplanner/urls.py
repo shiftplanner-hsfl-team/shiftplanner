@@ -6,7 +6,7 @@ from apps.planning import views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('anmelden/', auth_views.LoginView.as_view(template_name='planning/login.html', extra_context={'demo_mode': settings.DEBUG}), name='login'),
+    path('anmelden/', auth_views.LoginView.as_view(template_name='planning/login.html', extra_context={'demo_mode': settings.DEBUG or settings.PUBLIC_DEMO}), name='login'),
     path('abmelden/', auth_views.LogoutView.as_view(), name='logout'),
     path('', views.dashboard, name='dashboard'),
     path('bedarf/', views.demand, name='demand'),
