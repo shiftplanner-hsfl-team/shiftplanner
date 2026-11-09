@@ -64,14 +64,27 @@ Entscheidungen können die Besetzbarkeit späterer, überlappender Slots beeinfl
 Eine Rotation/Belastungsfairness wird nicht behauptet. Es gibt keinen Zufall,
 keine KI-Planung und keinen versteckten Planverlauf als Einflussgröße.
 
-## Erweiterungspunkt RB-01
+## Regelmodul RB-01 / RB-03 (`rules.py`, Sprint 1)
 
-ArbZG-Prüfung ist gemäß Zusammenfassung eine spätere Rahmenbedingung.
-Die Filterung von Kandidaten in der Engine ist die Stelle, an der ein getrenntes
-Regelmodul ergänzt werden kann. Im vorliegenden Stand ist noch kein solches
-Modul implementiert. Insbesondere werden weder Ruhezeiten, Pausen noch
-Höchstarbeitszeiten geprüft. Dieser offene Punkt muss vor betrieblichem Einsatz
-bearbeitet werden.
+Die gesetzlichen Rahmenbedingungen liegen in einem eigenen Modul ohne Datenbank- und
+HTTP-Abhängigkeit. Die Planerzeugung fragt in der Kandidatenfilterung
+(`services.is_eligible`, Schritt 4 des Algorithmus) nur `rules.is_allowed(...)`; die
+manuelle Korrektur (REQ-11) nutzt `services.assignment_violations(...)` und zeigt die
+Meldungen als Warnung. So bleibt die Kopplung lose und alle Grenzwerte stehen an einer
+Stelle (Reformdiskussion ArbZG).
+
+| Regel | Grenze | Umsetzung |
+|---|---|---|
+| § 3 ArbZG | höchstens 10 h Arbeitszeit je Tag | `MAX_DAILY_HOURS` |
+| § 3 ArbZG (6 Werktage × 8 h) | höchstens 48 h je Kalenderwoche | `MAX_WEEKLY_HOURS` |
+| § 4 ArbZG | Pause 30 min ab mehr als 6 h, 45 min ab mehr als 9 h | `BREAK_RULES`; im Plan ausgewiesen, von der Arbeitszeit abgezogen |
+| § 5 ArbZG | mindestens 11 h Ruhezeit zwischen zwei Arbeitstagen | `MIN_REST_HOURS` |
+| RB-03 | Feiertage Schleswig-Holstein (inkl. Ostern-abhängiger Tage) | `holidays(year)`; im Kalender gekennzeichnet, beim Kopieren einer Woche ohne Bedarf |
+
+Vereinfachungen: Der Ausgleich auf durchschnittlich 8 h über 6 Monate (§ 3 Satz 2)
+wird nicht nachgehalten; Sonn- und Feiertagsarbeit (§§ 9, 10) entscheidet der Chef,
+indem er Bedarf erfasst (REQ-22). Nicht zulässige Zuweisungen werden nicht erzeugt;
+die Position bleibt „unbesetzt“.
 
 ## Offene technische Grenzen
 

@@ -18,6 +18,7 @@ from django.http import HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
+from . import rules
 from .forms import DeadlineForm, EmployeeForm, QualificationForm, TemplateForm, VacationForm
 from .models import (
     Availability,
@@ -31,6 +32,7 @@ from .models import (
     Submission,
     Vacation,
 )
+from .rules import Shift
 from .services import (
     ensure_slots,
     generate_plan,
@@ -299,6 +301,8 @@ def parse_demand(post, slots, quals):
 def expand_to_month(rows, slots):
     """Überträgt die Eingaben einer Woche auf alle gleichen Wochentage des Monats.
 
+    Feiertage (RB-03) bleiben ohne Bedarf, außer sie wurden in der Woche selbst bearbeitet.
+
     Args:
         rows: Liste ``(slot, total, mix)`` der bearbeiteten Woche.
         slots: Alle Slots des Monats.
@@ -307,10 +311,12 @@ def expand_to_month(rows, slots):
         Liste ``(slot, total, mix)`` für alle passenden Slots des Monats.
     """
     by_weekday = {(s.date.weekday(), s.template_id): (total, mix) for s, total, mix in rows}
+    edited = {s.pk for s, _, _ in rows}
     return [
         (s, *by_weekday[(s.date.weekday(), s.template_id)])
         for s in slots
         if (s.date.weekday(), s.template_id) in by_weekday
+        and (s.pk in edited or not rules.holiday_name(s.date))
     ]
 
 
@@ -693,6 +699,7 @@ def plan_context(ctx):
             name=key[0],
             start=key[1],
             end=key[2],
+            break_minutes=rules.required_break_minutes(Shift(days[0], key[1], key[2])),
             cells=[cell_summary(group.get(day, [])) for day in days],
         )
         for key, group in grouped.items()
