@@ -298,7 +298,9 @@ class EngineTests(TestCase):
         slots = list(Slot.objects.all())
         Slot.objects.update(total=3)
         employees = [self.employee(f'e{i}') for i in range(30)]
-        # Include all 30 calendar days for the QR-01 reference workload.
+        # Alle 30 Kalendertage für die QR-01-Referenzlast (REQ-22: Sonntage geöffnet).
+        Month.objects.filter(pk=self.month.pk).update(open_weekdays='0123456')
+        self.month.refresh_from_db()
         from .services import dates_for_month
 
         for day in dates_for_month(self.month.date):
@@ -624,3 +626,71 @@ class HolidayCalendarTests(TestCase):
         self.assertEqual(
             Slot.objects.get(date=date(2026, 12, 26), template__name='Frühschicht').total, 0
         )
+
+
+@override_settings(PASSWORD_HASHERS=FAST_PASSWORDS, DEBUG=True, SHIFTPLANNER_TODAY=DEMO_TODAY)
+class OpeningDayTests(TestCase):
+    """REQ-22: Öffnungstage je Planungsmonat (Sonntag optional)."""
+
+    def setUp(self):
+        call_command('seed_demo', verbosity=0)
+        self.month = Month.objects.get()
+        self.client.login(username='nora.krueger@example.com', password='ShiftDemo2026!')
+
+    def post(self, **data):
+        payload = {'month': '2026-11', 'weekdays': ['0', '1', '2', '3', '4', '5']}
+        payload.update(data)
+        return self.client.post('/oeffnungstage/', payload, follow=True)
+
+    def test_sunday_closed_by_default(self):
+        response = self.client.get('/bedarf/?month=2026-11&week=45')
+        self.assertContains(response, 'Mo, Di, Mi, Do, Fr, Sa geöffnet')
+        self.assertNotContains(response, 'So 08')
+
+    def test_ak_open_single_sunday_shows_slots_in_demand_availability_plan(self):
+        sunday = date(2026, 11, 8)
+        revision = self.month.revision
+        self.post(day='2026-11-08', day_state='open')
+        self.month.refresh_from_db()
+        self.assertGreater(self.month.revision, revision)
+        self.assertContains(self.client.get('/bedarf/?month=2026-11&week=45'), 'So 08')
+        slot = Slot.objects.get(date=sunday, template__name='Frühschicht')
+        self.client.post(
+            '/bedarf/?month=2026-11&week=45',
+            {'month': '2026-11', f'total_{slot.pk}': '1', f'need_{slot.pk}_1': '0'},
+        )
+        lea = Client()
+        lea.login(username='lea.meyer@example.com', password='ShiftDemo2026!')
+        self.assertContains(lea.get('/meine-verfuegbarkeiten/?month=2026-11&week=45'), 'So 08')
+        lea.post(
+            '/meine-verfuegbarkeiten/?month=2026-11&week=45',
+            {'month': '2026-11', f'priority_{slot.pk}': '1', 'action': 'submit'},
+        )
+        Submission.objects.update(submitted=True)
+        plan = generate_plan(self.month)
+        self.assertTrue(plan.assignments.filter(date=sunday).exists())
+        self.assertEqual(
+            Slot.objects.filter(date__week_day=1, month=self.month)
+            .values('date')
+            .distinct()
+            .count(),
+            1,
+        )
+
+    def test_closed_weekday_and_single_day_are_not_planned(self):
+        self.post(weekdays=['0', '1', '2', '3', '4'], day='2026-11-02', day_state='closed')
+        Submission.objects.update(submitted=True)
+        plan = generate_plan(self.month)
+        dates = set(plan.assignments.values_list('date', flat=True))
+        self.assertNotIn(date(2026, 11, 7), dates)  # Samstag geschlossen
+        self.assertNotIn(date(2026, 11, 2), dates)  # einzelner Tag geschlossen
+        self.assertIn(date(2026, 11, 3), dates)
+
+    def test_invalid_opening_input(self):
+        self.assertContains(self.post(weekdays=[]), 'Mindestens ein Wochentag')
+        self.assertContains(
+            self.post(day='2026-12-06', day_state='open'), 'im gewählten Planungsmonat'
+        )
+        employee = Client()
+        employee.login(username='lea.meyer@example.com', password='ShiftDemo2026!')
+        self.assertEqual(employee.post('/oeffnungstage/', {'month': '2026-11'}).status_code, 403)

@@ -15,6 +15,39 @@ class DeadlineForm(forms.Form):
     )
 
 
+class OpeningForm(forms.Form):
+    """Öffnungstage eines Planungsmonats festlegen (REQ-22)."""
+
+    weekdays = forms.MultipleChoiceField(
+        label='Geöffnete Wochentage',
+        choices=list(enumerate(['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'])),
+        widget=forms.CheckboxSelectMultiple,
+        error_messages={'required': 'Mindestens ein Wochentag muss geöffnet sein.'},
+    )
+    day = forms.DateField(
+        label='Einzelner Tag (optional)',
+        required=False,
+        widget=forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+    )
+    day_state = forms.ChoiceField(
+        label='Dieser Tag ist',
+        choices=[('open', 'geöffnet'), ('closed', 'geschlossen')],
+        required=False,
+    )
+
+    def __init__(self, *args, month=None, **kwargs):
+        """Initialisiert die Wochentage mit dem aktuellen Stand des Monats.
+
+        Args:
+            *args: Positionsargumente für ``forms.Form`` (z. B. POST-Daten).
+            month: Planungsmonat oder ``None``.
+            **kwargs: Weitere Argumente für ``forms.Form``.
+        """
+        if month is not None and 'initial' not in kwargs:
+            kwargs['initial'] = {'weekdays': list(month.open_weekdays), 'day_state': 'open'}
+        super().__init__(*args, **kwargs)
+
+
 class TemplateForm(forms.ModelForm):
     """Schichtvorlage anlegen oder ändern (REQ-03)."""
 

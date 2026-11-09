@@ -73,8 +73,42 @@ def dates_for_month(value):
     ]
 
 
+def open_days(month):
+    """Liefert die Öffnungstage eines Monats (REQ-22).
+
+    Grundlage sind die geöffneten Wochentage des Monats (Standard Montag–Samstag);
+    einzelne Tage können davon abweichend geöffnet oder geschlossen werden.
+
+    Args:
+        month: Planungsmonat.
+
+    Returns:
+        Sortierte Liste der geöffneten Tage.
+    """
+    exceptions = dict(month.day_exceptions.values_list('date', 'is_open'))
+    return [
+        day
+        for day in dates_for_month(month.date)
+        if exceptions.get(day, str(day.weekday()) in month.open_weekdays)
+    ]
+
+
+def month_slots(month):
+    """Liefert die Slots der Öffnungstage eines Monats (Bedarf, Verfügbarkeit, Plan).
+
+    Slots geschlossener Tage bleiben gespeichert, werden aber nicht angezeigt oder geplant.
+
+    Args:
+        month: Planungsmonat.
+
+    Returns:
+        QuerySet von ``Slot``.
+    """
+    return Slot.objects.filter(month=month, date__in=open_days(month))
+
+
 def ensure_slots(month):
-    """Legt fehlende Slots (Tag × Schichtvorlage) für einen Monat an; Sonntage bleiben frei.
+    """Legt fehlende Slots (Tag × Schichtvorlage) für alle Öffnungstage eines Monats an.
 
     Args:
         month: Planungsmonat.
@@ -84,12 +118,36 @@ def ensure_slots(month):
     Slot.objects.bulk_create(
         [
             Slot(month=month, date=day, template=t)
-            for day in dates_for_month(month.date)
-            if day.weekday() != 6
+            for day in open_days(month)
             for t in templates
             if (day, t.pk) not in existing
         ]
     )
+
+
+@transaction.atomic
+def set_opening(month, weekdays, day=None, is_open=None):
+    """Ändert die Öffnungstage eines Monats und legt fehlende Slots an (REQ-22).
+
+    Args:
+        month: Planungsmonat.
+        weekdays: Geöffnete Wochentage als Zahlen 0 (Montag) bis 6 (Sonntag).
+        day: Optional ein einzelnes Datum im Monat, das abweichend gilt.
+        is_open: Für ``day``: True = geöffnet, False = geschlossen.
+
+    Raises:
+        ValueError: Wenn kein Wochentag geöffnet ist oder ``day`` nicht im Monat liegt.
+    """
+    if not weekdays:
+        raise ValueError('Mindestens ein Wochentag muss geöffnet sein.')
+    month.open_weekdays = ''.join(str(d) for d in sorted(set(weekdays)))
+    month.save(update_fields=['open_weekdays'])
+    if day is not None:
+        if (day.year, day.month) != (month.date.year, month.date.month):
+            raise ValueError('Der Tag muss im gewählten Planungsmonat liegen.')
+        month.day_exceptions.update_or_create(date=day, defaults={'is_open': is_open})
+    ensure_slots(month)
+    touch(month)
 
 
 def today():
@@ -219,7 +277,7 @@ def readiness(month):
         month=month, submitted=True, employee__in=employees
     ).count()
     total = employees.count()
-    positions = sum(Slot.objects.filter(month=month).values_list('total', flat=True))
+    positions = sum(month_slots(month).values_list('total', flat=True))
     status = period_status(month)
     expired = status == PERIOD_EXPIRED
     inputs_complete = submitted == total or expired
@@ -434,7 +492,8 @@ def generate_plan(month):
             'bevor du den Plan erzeugst.'
         )
     slots = list(
-        Slot.objects.filter(month=month, total__gt=0)
+        month_slots(month)
+        .filter(total__gt=0)
         .select_related('template')
         .prefetch_related('needs__qualification')
     )

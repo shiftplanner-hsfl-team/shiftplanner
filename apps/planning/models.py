@@ -79,9 +79,27 @@ class Month(models.Model):
     revision = models.PositiveIntegerField(default=0)
     demand_saved = models.BooleanField(default=False)
     deadline = models.DateField('Abgabefrist', null=True, blank=True)
+    open_weekdays = models.CharField(
+        'Geöffnete Wochentage', max_length=7, default='012345'
+    )  # 0 = Montag … 6 = Sonntag (REQ-22)
 
     def __str__(self):
         return f'{self.date:%m/%Y}'
+
+
+class MonthDay(models.Model):
+    """Abweichender Öffnungstag in einem Planungsmonat, z. B. verkaufsoffener Sonntag (REQ-22)."""
+
+    month = models.ForeignKey(Month, on_delete=models.CASCADE, related_name='day_exceptions')
+    date = models.DateField('Datum')
+    is_open = models.BooleanField('Geöffnet')
+
+    class Meta:
+        ordering = ['date']
+        constraints = [models.UniqueConstraint(fields=['month', 'date'], name='unique_month_day')]
+
+    def __str__(self):
+        return f'{self.date:%d.%m.%Y}: {"geöffnet" if self.is_open else "geschlossen"}'
 
 
 class Slot(models.Model):
