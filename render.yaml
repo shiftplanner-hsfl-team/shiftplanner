@@ -5,7 +5,7 @@ services:
     plan: free
     region: frankfurt
     buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
-    startCommand: 'test -n "$DATABASE_URL" && python manage.py migrate --noinput && python manage.py seed_demo && gunicorn shiftplanner.wsgi:application'
+    startCommand: python manage.py migrate --noinput && python manage.py seed_demo && gunicorn shiftplanner.wsgi:application
     envVars:
       - key: PYTHON_VERSION
         value: 3.14.3
@@ -16,4 +16,13 @@ services:
       - key: DJANGO_SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: shiftplanner-demo-db
+          property: connectionString
+
+databases:
+  - name: shiftplanner-demo-db
+    plan: free
+    region: frankfurt
+    databaseName: shiftplanner
+    user: shiftplanner
