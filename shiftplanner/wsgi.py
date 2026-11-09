@@ -1,5 +1,4 @@
-"""
-WSGI config for shiftplanner project.
+"""WSGI config for shiftplanner project.
 
 It exposes the WSGI callable as a module-level variable named ``application``.
 
