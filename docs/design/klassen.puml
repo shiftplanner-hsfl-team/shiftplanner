@@ -1,0 +1,103 @@
+@startuml
+title UML-Klassendiagramm: 11 Domänenklassen
+
+skinparam classAttributeIconSize 0
+
+class Employee {
+  +id: int
+  +user: OneToOneField(User)
+  +contract_type: str
+  +min_hours: float
+  +max_hours: float
+  +is_active: bool
+}
+
+class Qualification {
+  +id: int
+  +name: str
+}
+
+class ShiftTemplate {
+  +id: int
+  +name: str
+  +start_time: time
+  +end_time: time
+}
+
+class Month {
+  +id: int
+  +year: int
+  +month: int
+  +need_status: str
+  +revision: int
+}
+
+class Slot {
+  +id: int
+  +date: date
+  +template: ForeignKey(ShiftTemplate)
+  +total_need: int
+}
+
+class Need {
+  +id: int
+  +slot: ForeignKey(Slot)
+  +qualification: ForeignKey(Qualification)
+  +count: int
+}
+
+class Availability {
+  +id: int
+  +employee: ForeignKey(Employee)
+  +slot: ForeignKey(Slot)
+  +priority: int
+}
+
+class Submission {
+  +id: int
+  +employee: ForeignKey(Employee)
+  +month: ForeignKey(Month)
+  +status: str
+}
+
+class Leave {
+  +id: int
+  +employee: ForeignKey(Employee)
+  +start_date: date
+  +end_date: date
+}
+
+class Plan {
+  +id: int
+  +month: ForeignKey(Month)
+  +created_at: datetime
+  +duration_ms: float
+  +is_published: bool
+}
+
+class Assignment {
+  +id: int
+  +plan: ForeignKey(Plan)
+  +slot: ForeignKey(Slot)
+  +employee: ForeignKey(Employee, null=True)
+  +need: ForeignKey(Need)
+}
+
+Employee "1" -- "*" Qualification : hat
+Employee "1" -- "*" Availability : trägt ein
+Employee "1" -- "*" Submission : gibt ab
+Employee "1" -- "*" Leave : nimmt
+
+Month "1" *-- "*" Slot : enthält
+Slot "1" *-- "*" Need : hat
+Slot "1" -- "0..1" ShiftTemplate : nutzt
+
+Plan "1" *-- "*" Assignment : enthält
+Assignment "0..1" --> Employee : weist zu
+
+note right of Assignment
+  employee = NULL
+  bedeutet "Unbesetzt"
+end note
+
+@enduml

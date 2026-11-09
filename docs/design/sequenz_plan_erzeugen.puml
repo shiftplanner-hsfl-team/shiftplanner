@@ -1,0 +1,44 @@
+@startuml
+title Sequenzdiagramm: Plan erzeugen (UC-04)
+
+actor "Führungskraft" as chef
+participant "Browser" as browser
+participant "Views\n(planner_only)" as views
+participant "Services\n(match_positions)" as services
+participant "Models" as models
+database "Datenbank" as db
+
+chef -> browser : Klick "Plan erzeugen"
+browser -> views : POST /planning/generate/
+views -> views : Rolle prüfen (planner_only)
+
+alt Rolle fehlt
+  views --> browser : HTTP 403 Forbidden
+  browser --> chef : Fehlermeldung
+else Rolle vorhanden
+  views -> models : readiness() prüfen
+  
+  alt Vorbedingungen nicht erfüllt
+    models --> views : False
+    views --> browser : Fehlermeldung (UC-04 1a)
+    browser --> chef : "Fehlende Eingaben"
+  else Vorbedingungen erfüllt
+    views -> services : generate_plan(month)
+    services -> models : Slots laden (chronologisch)
+    models -> db : SELECT slot
+    
+    loop Für jeden Slot
+      services -> models : Kandidaten filtern\n(Urlaub, Überschneidung, Qualifikation)
+      services -> services : match_positions()\n(Prio 1 vor 2 vor 3)
+      services -> models : Assignment speichern
+    end
+    
+    services -> models : Plan als Snapshot speichern
+    models -> db : INSERT plan, assignments
+    services --> views : duration_ms
+    views --> browser : Plan-Ansicht mit unbesetzten Schichten
+    browser --> chef : Plan angezeigt
+  end
+end
+
+@enduml
