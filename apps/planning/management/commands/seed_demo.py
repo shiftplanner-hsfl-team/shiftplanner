@@ -19,6 +19,13 @@ from apps.planning.models import (
 )
 from apps.planning.services import ensure_slots
 
+CONTRACTS = [
+    (Employee.FULL_TIME, 40),
+    (Employee.PART_TIME, 25),
+    (Employee.STUDENT, 20),
+    (Employee.MINIJOB, 10),
+]
+
 
 class Command(BaseCommand):
     """Management-Befehl ``seed_demo``: legt fiktive Demodaten an."""
@@ -90,7 +97,10 @@ class Command(BaseCommand):
             user = User.objects.create_user(
                 email, email, 'ShiftDemo2026!', first_name=first, last_name=last
             )
-            employee = Employee.objects.create(user=user)
+            contract, hours = CONTRACTS[index % len(CONTRACTS)]
+            employee = Employee.objects.create(
+                user=user, contract_type=contract, weekly_hours=hours
+            )
             employee.qualifications.add(sale)
             if index < 8:
                 employee.qualifications.add(cash)

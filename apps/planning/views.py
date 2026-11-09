@@ -18,7 +18,7 @@ from django.http import HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
-from .forms import DeadlineForm, QualificationForm, TemplateForm, VacationForm
+from .forms import DeadlineForm, EmployeeForm, QualificationForm, TemplateForm, VacationForm
 from .models import (
     Availability,
     Employee,
@@ -38,6 +38,7 @@ from .services import (
     month_label,
     period_status,
     readiness,
+    save_employee,
     set_deadline,
     touch,
 )
@@ -384,6 +385,42 @@ def templates(request, ctx):
         return go('templates', ctx)
     ctx.update(form=form, editing=instance, templates=ShiftTemplate.objects.all())
     return render(request, 'planning/templates.html', ctx)
+
+
+@planner_only
+@with_context
+def employees(request, ctx):
+    """Mitarbeitende mit Vertragsart, Wochenstunden und Qualifikationen verwalten (REQ-02).
+
+    Ohne Parameter wird eine neue Person angelegt, mit ``edit`` eine bestehende bearbeitet.
+    Fehlende Pflichtfelder werden benannt; dann wird nichts gespeichert (AK 2).
+    """
+    selected = request.GET.get('edit') or request.POST.get('id')
+    instance = (
+        get_object_or_404(Employee.objects.select_related('user'), pk=selected)
+        if selected
+        else None
+    )
+    form = EmployeeForm(request.POST or None, employee=instance)
+    if request.method == 'POST':
+        if form.is_valid():
+            saved = save_employee(form.cleaned_data, instance)
+            messages.success(
+                request,
+                f'{saved} gespeichert. Die Angaben gelten ab dem nächsten erzeugten Plan.',
+            )
+            return go('employees', ctx)
+        missing = form.missing_fields()
+        if missing:
+            messages.error(request, 'Bitte ausfüllen: ' + ', '.join(missing) + '.')
+    ctx.update(
+        form=form,
+        editing=instance,
+        employees=Employee.objects.select_related('user')
+        .prefetch_related('qualifications')
+        .order_by('user__last_name', 'user__first_name'),
+    )
+    return render(request, 'planning/employees.html', ctx)
 
 
 @planner_only

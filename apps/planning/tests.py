@@ -409,3 +409,101 @@ class DeadlineTests(TestCase):
             {'month': '2026-11', f'priority_{self.slot.pk}': '1', 'action': 'submit'},
         )
         self.assertFalse(Submission.objects.get(employee=self.ben, month=self.month).submitted)
+
+
+@override_settings(PASSWORD_HASHERS=FAST_PASSWORDS, DEBUG=True, SHIFTPLANNER_TODAY=DEMO_TODAY)
+class EmployeeManagementTests(TestCase):
+    """ABW-02: Mitarbeitende im System anlegen (REQ-02 AK 1–3)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        call_command('seed_demo', verbosity=0)
+        cls.month = Month.objects.get()
+        cls.sale = Qualification.objects.get(name='Verkauf')
+        cls.key = Qualification.objects.get(name='Schlüsselverantwortung')
+
+    def setUp(self):
+        self.client.login(username='nora.krueger@example.com', password='ShiftDemo2026!')
+
+    def valid_data(self, **changes):
+        data = {
+            'month': '2026-11',
+            'first_name': 'Sara',
+            'last_name': 'Neumann',
+            'email': 'sara.neumann@example.com',
+            'contract_type': 'minijob',
+            'weekly_hours': '10',
+            'qualifications': [self.sale.pk],
+            'password': 'Sicher-Start-2026',
+        }
+        data.update(changes)
+        return data
+
+    def test_ak1_created_employee_is_listed_and_can_log_in(self):
+        response = self.client.post('/mitarbeitende/', self.valid_data(), follow=True)
+        self.assertContains(response, 'Sara Neumann gespeichert')
+        self.assertContains(response, 'Minijob')
+        employee = Employee.objects.get(user__email='sara.neumann@example.com')
+        self.assertEqual(employee.contract_type, Employee.MINIJOB)
+        self.assertEqual(employee.weekly_hours, 10)
+        self.assertEqual(list(employee.qualifications.all()), [self.sale])
+        login = Client()
+        self.assertTrue(
+            login.login(username='sara.neumann@example.com', password='Sicher-Start-2026')
+        )
+        self.assertContains(login.get('/'), 'Hallo Sara.')
+
+    def test_ak2_missing_required_fields_are_named_and_nothing_saved(self):
+        before = Employee.objects.count()
+        response = self.client.post(
+            '/mitarbeitende/', self.valid_data(first_name='', contract_type='', password='')
+        )
+        self.assertContains(response, 'Bitte ausfüllen: Vorname, Vertragsart, Startpasswort.')
+        self.assertEqual(Employee.objects.count(), before)
+        self.assertFalse(User.objects.filter(email='sara.neumann@example.com').exists())
+
+    def test_invalid_hours_and_duplicate_email_rejected(self):
+        response = self.client.post('/mitarbeitende/', self.valid_data(weekly_hours='60'))
+        self.assertContains(response, 'kleiner oder gleich 48')
+        response = self.client.post(
+            '/mitarbeitende/', self.valid_data(email='lea.meyer@example.com')
+        )
+        self.assertContains(response, 'bereits vergeben')
+
+    def test_ak3_qualification_change_applies_to_next_plan_only(self):
+        Submission.objects.update(submitted=True)
+        generate_plan(self.month)
+        lea = Employee.objects.get(user__first_name='Lea')
+        roles_before = list(Assignment.objects.filter(employee=lea).values_list('role', flat=True))
+        revision = Month.objects.get().revision
+        response = self.client.post(
+            f'/mitarbeitende/?edit={lea.pk}',
+            self.valid_data(
+                id=lea.pk,
+                first_name='Lea',
+                last_name='Meyer',
+                email='lea.meyer@example.com',
+                contract_type='teilzeit',
+                weekly_hours='25',
+                qualifications=[self.key.pk],
+                password='',
+            ),
+        )
+        self.assertEqual(response.status_code, 302)
+        lea.refresh_from_db()
+        self.assertEqual(list(lea.qualifications.all()), [self.key])
+        self.assertEqual(
+            list(Assignment.objects.filter(employee=lea).values_list('role', flat=True)),
+            roles_before,
+        )
+        self.assertGreater(Month.objects.get().revision, revision)
+        self.assertTrue(
+            Client().login(username='lea.meyer@example.com', password='ShiftDemo2026!')
+        )
+
+    def test_employees_page_only_for_planner(self):
+        self.assertEqual(self.client.get('/mitarbeitende/').status_code, 200)
+        employee = Client()
+        employee.login(username='lea.meyer@example.com', password='ShiftDemo2026!')
+        self.assertEqual(employee.get('/mitarbeitende/').status_code, 403)
+        self.assertEqual(employee.post('/mitarbeitende/', self.valid_data()).status_code, 403)

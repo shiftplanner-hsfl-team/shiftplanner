@@ -19,10 +19,30 @@ class Qualification(models.Model):
 
 
 class Employee(models.Model):
-    """Mitarbeitendenprofil zu einem Django-Konto mit beliebig vielen Qualifikationen (REQ-02)."""
+    """Mitarbeitendenprofil zu einem Django-Konto (REQ-02).
+
+    Vertragsart und Wochenstunden werden im MVP nur gespeichert; die Prüfung der
+    Vertragsstunden folgt mit REQ-13 (Sprint 2).
+    """
+
+    FULL_TIME, PART_TIME, STUDENT, MINIJOB = 'vollzeit', 'teilzeit', 'studierende', 'minijob'
+    CONTRACT_TYPES = [
+        (FULL_TIME, 'Vollzeit'),
+        (PART_TIME, 'Teilzeit'),
+        (STUDENT, 'Studierende'),
+        (MINIJOB, 'Minijob'),
+    ]
 
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     qualifications = models.ManyToManyField(Qualification, blank=True)
+    contract_type = models.CharField('Vertragsart', max_length=20, choices=CONTRACT_TYPES)
+    weekly_hours = models.DecimalField(
+        'Wochenstunden',
+        max_digits=4,
+        decimal_places=1,
+        null=True,
+        validators=[MinValueValidator(1), MaxValueValidator(48)],
+    )
 
     def __str__(self):
         return self.user.get_full_name() or self.user.username
