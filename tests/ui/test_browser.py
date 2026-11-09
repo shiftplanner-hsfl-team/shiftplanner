@@ -1,4 +1,5 @@
 """Echte Chromium-Tests gegen Django + SQLite-Testdatenbank (QR-07)."""
+
 import os
 from pathlib import Path
 
@@ -29,7 +30,9 @@ class BrowserTests(StaticLiveServerTestCase):
         self.page.on('pageerror', lambda e: self.js_errors.append(str(e)))
 
     def tearDown(self):
-        self.page.screenshot(path=str(self.artifacts / f'{self._testMethodName}.png'), full_page=True)
+        self.page.screenshot(
+            path=str(self.artifacts / f'{self._testMethodName}.png'), full_page=True
+        )
         self.browser_context.close()
         self.browser.close()
         self.playwright.stop()
@@ -65,13 +68,20 @@ class BrowserTests(StaticLiveServerTestCase):
         self.page.get_by_label('Beginn', exact=True).fill('09:00')
         self.page.get_by_label('Ende', exact=True).fill('15:00')
         self.page.get_by_role('button', name='Vorlage speichern').click()
-        expect(self.page.get_by_role('heading', name='Wochenendschicht', exact=True)).to_be_visible()
+        expect(
+            self.page.get_by_role('heading', name='Wochenendschicht', exact=True)
+        ).to_be_visible()
         self.page.get_by_role('link', name='Qualifikationen', exact=True).click()
         self.page.get_by_label('Bezeichnung', exact=True).fill('Lager')
         self.page.get_by_label('Lea Meyer', exact=True).check()
         self.page.get_by_role('button', name='Änderungen speichern').click()
         expect(self.page.get_by_role('link', name='Lager', exact=True)).to_be_visible()
-        self.assertEqual(self.page.locator('img').evaluate_all('(xs)=>xs.filter(i=>!i.complete||!i.naturalWidth).length'), 0)
+        self.assertEqual(
+            self.page.locator('img').evaluate_all(
+                '(xs)=>xs.filter(i=>!i.complete||!i.naturalWidth).length'
+            ),
+            0,
+        )
 
     def test_mobile_save_submit_then_generate_month(self):
         self.page.set_viewport_size({'width': 360, 'height': 900})
