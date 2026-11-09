@@ -14,8 +14,8 @@ class Command(BaseCommand):
 
     @transaction.atomic
     def handle(self, *args, **options):
-        if not settings.DEBUG:
-            raise CommandError('Demodaten dürfen nur mit DJANGO_DEBUG=1 angelegt werden.')
+        if not (settings.DEBUG or settings.PUBLIC_DEMO):
+            raise CommandError('Demodaten dürfen nur im lokalen Debug- oder ausdrücklich aktivierten Demo-Modus angelegt werden.')
         if User.objects.exists():
             self.stdout.write('Bereits Benutzer vorhanden. Keine Daten geändert.')
             return
