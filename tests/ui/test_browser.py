@@ -11,7 +11,11 @@ from playwright.sync_api import expect, sync_playwright
 from apps.planning.models import Employee
 
 
-@override_settings(DEBUG=True, PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'])
+@override_settings(
+    DEBUG=True,
+    PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'],
+    SHIFTPLANNER_TODAY='2026-10-20',
+)
 class BrowserTests(StaticLiveServerTestCase):
     @classmethod
     def setUpClass(cls):

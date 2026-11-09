@@ -5,6 +5,14 @@ from django import forms
 from .models import Qualification, ShiftTemplate, Vacation
 
 
+class DeadlineForm(forms.Form):
+    """Abgabefrist eines Planungszeitraums festlegen (REQ-05)."""
+
+    deadline = forms.DateField(
+        label='Abgabefrist', widget=forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d')
+    )
+
+
 class TemplateForm(forms.ModelForm):
     """Schichtvorlage anlegen oder ändern (REQ-03)."""
 

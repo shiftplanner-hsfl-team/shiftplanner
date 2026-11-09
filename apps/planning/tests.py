@@ -18,12 +18,16 @@ from .models import (
     Submission,
     Vacation,
 )
-from .services import generate_plan, match_positions
+from .services import generate_plan, match_positions, readiness
 
 FAST_PASSWORDS = ['django.contrib.auth.hashers.MD5PasswordHasher']
 
 
-@override_settings(PASSWORD_HASHERS=FAST_PASSWORDS, DEBUG=True)
+# Eingabephase der Demo: Frist 28.10.2026 liegt nach diesem Datum (REQ-05).
+DEMO_TODAY = '2026-10-20'
+
+
+@override_settings(PASSWORD_HASHERS=FAST_PASSWORDS, DEBUG=True, SHIFTPLANNER_TODAY=DEMO_TODAY)
 class WorkflowTests(TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -314,3 +318,94 @@ class EngineTests(TestCase):
         self.assertLess(elapsed, 10)
         self.assertEqual(plan.assignments.count(), 270)
         print(f'\nQR-01: 30 Mitarbeitende × 3 Vorlagen × 30 Tage: {elapsed:.3f} s')
+
+
+@override_settings(PASSWORD_HASHERS=FAST_PASSWORDS, DEBUG=True, SHIFTPLANNER_TODAY=DEMO_TODAY)
+class DeadlineTests(TestCase):
+    """ABW-01: Abgabefrist nach REQ-05 AK 1–4 und REQ-07 AK 2."""
+
+    @classmethod
+    def setUpTestData(cls):
+        call_command('seed_demo', verbosity=0)
+        cls.month = Month.objects.get()
+        cls.ben = Employee.objects.get(user__first_name='Ben')
+        cls.eva = Employee.objects.get(user__first_name='Eva')
+        cls.slot = Slot.objects.filter(month=cls.month).first()
+
+    def login(self, name='nora.krueger'):
+        self.client.login(username=name + '@example.com', password='ShiftDemo2026!')
+
+    def test_ak1_open_period_with_deadline_visible_for_employees(self):
+        Month.objects.filter(pk=self.month.pk).update(deadline=None)
+        self.login('lea.meyer')
+        self.assertContains(self.client.get('/'), 'noch nicht geöffnet')
+        self.login()
+        self.client.post('/zeitraum/', {'month': '2026-11', 'deadline': '2026-10-25'})
+        self.month.refresh_from_db()
+        self.assertEqual(self.month.deadline, date(2026, 10, 25))
+        self.login('lea.meyer')
+        self.assertContains(self.client.get('/'), 'bis zum 25.10.2026')
+
+    def test_ak2_deadline_after_period_start_is_rejected(self):
+        self.login()
+        response = self.client.post(
+            '/zeitraum/', {'month': '2026-11', 'deadline': '2026-11-02'}, follow=True
+        )
+        self.assertContains(response, 'vor dem Beginn des Planungszeitraums')
+        self.month.refresh_from_db()
+        self.assertEqual(self.month.deadline, date(2026, 10, 28))
+
+    def test_employee_cannot_access_period_form(self):
+        self.login('lea.meyer')
+        response = self.client.post('/zeitraum/', {'month': '2026-11', 'deadline': '2026-10-25'})
+        self.assertEqual(response.status_code, 403)
+
+    def test_ak3_input_locked_after_deadline(self):
+        self.login('ben.fischer')
+        with override_settings(SHIFTPLANNER_TODAY='2026-10-29'):
+            response = self.client.post(
+                '/meine-verfuegbarkeiten/?month=2026-11',
+                {'month': '2026-11', f'priority_{self.slot.pk}': '1', 'action': 'submit'},
+                follow=True,
+            )
+            self.assertContains(response, 'Eingabe ist gesperrt')
+            self.assertContains(self.client.get('/meine-verfuegbarkeiten/'), 'Eingabe gesperrt.')
+        self.assertFalse(Submission.objects.get(employee=self.ben, month=self.month).submitted)
+
+    def test_input_allowed_on_deadline_day(self):
+        self.login('ben.fischer')
+        with override_settings(SHIFTPLANNER_TODAY='2026-10-28'):
+            self.client.post(
+                '/meine-verfuegbarkeiten/?month=2026-11',
+                {'month': '2026-11', f'priority_{self.slot.pk}': '1', 'action': 'submit'},
+            )
+        self.assertTrue(Submission.objects.get(employee=self.ben, month=self.month).submitted)
+
+    def test_ak3_generation_after_deadline_with_missing_submissions(self):
+        self.login()
+        self.assertFalse(readiness(self.month)['ready'])
+        with override_settings(SHIFTPLANNER_TODAY='2026-10-29'):
+            state = readiness(self.month)
+            self.assertTrue(state['ready'])
+            self.assertEqual(state['missing'], 2)
+            self.client.post('/plan/erzeugen/', {'month': '2026-11'})
+        assigned = set(
+            Assignment.objects.exclude(employee=None).values_list('employee_id', flat=True)
+        )
+        self.assertTrue(assigned)
+        self.assertNotIn(self.ben.pk, assigned)
+        self.assertNotIn(self.eva.pk, assigned)
+
+    def test_ak4_generation_before_deadline_when_all_submitted(self):
+        Submission.objects.update(submitted=True)
+        self.assertTrue(readiness(self.month)['ready'])
+        self.assertEqual(readiness(self.month)['status'], 'offen')
+
+    def test_no_input_before_period_is_opened(self):
+        Month.objects.filter(pk=self.month.pk).update(deadline=None)
+        self.login('ben.fischer')
+        self.client.post(
+            '/meine-verfuegbarkeiten/?month=2026-11',
+            {'month': '2026-11', f'priority_{self.slot.pk}': '1', 'action': 'submit'},
+        )
+        self.assertFalse(Submission.objects.get(employee=self.ben, month=self.month).submitted)

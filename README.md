@@ -21,6 +21,16 @@ python manage.py seed_demo
 python manage.py runserver 127.0.0.1:8000
 ```
 
+Die Demo hat die Abgabefrist **28.10.2026** für November 2026. Um die Eingabephase
+vor der Frist zu zeigen, vor `runserver` ein Demo-Datum setzen:
+
+```bash
+export SHIFTPLANNER_TODAY=2026-10-20        # Windows PowerShell: $env:SHIFTPLANNER_TODAY="2026-10-20"
+```
+
+Ohne diese Variable gilt das echte Tagesdatum; die Frist ist dann abgelaufen,
+Mitarbeitende können nichts mehr ändern und der Plan ist trotz fehlender Abgaben erzeugbar.
+
 Danach [http://127.0.0.1:8000](http://127.0.0.1:8000) öffnen.
 Alternativ unter macOS/Linux im Projektordner `./start.sh` ausführen.
 Alle Daten bleiben lokal in der ignorierten Datei `db.sqlite3` gespeichert.
@@ -44,11 +54,17 @@ Demo-Zugänge **`ShiftDemo2026!`**. Nur lokal mit diesen Konten arbeiten.
    kann hier durch die Planung eingetragen werden.
 3. Abmelden und als Ben und danach Eva anmelden. **Verfügbarkeiten bearbeiten**,
    Priorität wählen und **Angaben abgeben**. Entwürfe sind getrennt von Abgaben.
+   (Nur in der Eingabephase, also mit `SHIFTPLANNER_TODAY=2026-10-20`.)
 4. Wieder als Nora anmelden, **Schichtplan → Plan erzeugen** öffnen und
-   **Schichtplan erzeugen** klicken. Bei offenen Abgaben bleibt diese Aktion gesperrt.
-5. Den nur lesbaren Plan und **Unbesetzte Schichten** prüfen. Am 06.11. ist die
+   **Schichtplan erzeugen** klicken. Vor Fristablauf ist das erst möglich, wenn alle
+   abgegeben haben (REQ-05 AK 4).
+5. Fristablauf zeigen: Auf der Übersicht als Nora die **Abgabefrist** auf ein Datum vor
+   dem Demo-Datum setzen (z. B. 19.10.2026) und **Frist ändern**. Mitarbeitende sind
+   danach gesperrt, der Plan ist auch mit fehlenden Abgaben erzeugbar; fehlende Angaben
+   gelten als nicht verfügbar (REQ-05 AK 3, ABW-01).
+6. Den nur lesbaren Plan und **Unbesetzte Schichten** prüfen. Am 06.11. ist die
    Spätschicht in der Demo bewusst für alle gesperrt, damit Lücken sichtbar werden.
-6. Eingaben ändern: Der bisherige Plan wird als veraltet markiert und kann neu
+7. Eingaben ändern: Der bisherige Plan wird als veraltet markiert und kann neu
    erzeugt werden. Der alte Stand bleibt bis dahin lesbar.
 
 Die Demo enthält tatsächlich **75 Slots / 225 Positionen** im November 2026:

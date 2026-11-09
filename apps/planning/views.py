@@ -18,7 +18,7 @@ from django.http import HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
-from .forms import QualificationForm, TemplateForm, VacationForm
+from .forms import DeadlineForm, QualificationForm, TemplateForm, VacationForm
 from .models import (
     Availability,
     Employee,
@@ -31,7 +31,16 @@ from .models import (
     Submission,
     Vacation,
 )
-from .services import ensure_slots, generate_plan, month_label, readiness, touch
+from .services import (
+    ensure_slots,
+    generate_plan,
+    input_open,
+    month_label,
+    period_status,
+    readiness,
+    set_deadline,
+    touch,
+)
 
 PLANNER_GROUP = 'Planung'
 MAX_PER_SLOT = 30
@@ -214,13 +223,41 @@ def dashboard(request, ctx):
         ctx['plan'] = Plan.objects.filter(month=ctx['month']).first()
         ctx['template_count'] = ShiftTemplate.objects.count()
         ctx['slot_count'] = sum(s.total > 0 for s in ctx['slots'])
+        ctx['deadline_form'] = DeadlineForm(initial={'deadline': ctx['month'].deadline})
         return render(request, 'planning/dashboard.html', ctx)
     employee = get_object_or_404(Employee, user=request.user)
     ctx['submission'] = Submission.objects.filter(employee=employee, month=ctx['month']).first()
+    ctx['input_open'] = input_open(ctx['month'])
     ctx['available_count'] = Availability.objects.filter(
         employee=employee, slot__month=ctx['month'], priority__gt=0
     ).count()
     return render(request, 'planning/employee_home.html', ctx)
+
+
+@planner_only
+@with_context
+def period(request, ctx):
+    """Planungszeitraum mit Abgabefrist öffnen oder die Frist ändern (REQ-05 AK 1–2).
+
+    Nur POST; danach Rückkehr zur Startseite mit Erfolgs- oder Fehlermeldung.
+    """
+    if request.method != 'POST':
+        return go('dashboard', ctx)
+    form = DeadlineForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, 'Bitte ein gültiges Datum für die Abgabefrist eingeben.')
+        return go('dashboard', ctx)
+    try:
+        set_deadline(ctx['month'], form.cleaned_data['deadline'])
+    except ValueError as error:
+        messages.error(request, str(error))
+        return go('dashboard', ctx)
+    messages.success(
+        request,
+        f'Abgabefrist für {ctx["month_label"]}: {ctx["month"].deadline:%d.%m.%Y} · '
+        f'Zeitraum {period_status(ctx["month"])}.',
+    )
+    return go('dashboard', ctx)
 
 
 def parse_demand(post, slots, quals):
@@ -486,12 +523,21 @@ def availability(request, ctx, employee_id=None):
     """Eigene Verfügbarkeiten mit Priorität eintragen und abgeben (REQ-06, REQ-07).
 
     Der Chef sieht fremde Angaben nur lesend; Mitarbeitende sehen nur ihre eigenen.
+    Vor Öffnung des Zeitraums und nach Ablauf der Frist ist die Eingabe gesperrt (ABW-01).
     """
     employee = resolve_employee(request, ctx, employee_id)
     read_only = employee.user_id != request.user.pk
+    locked = not input_open(ctx['month'])
     if request.method == 'POST':
         if read_only:
             raise PermissionDenied
+        if locked:
+            messages.error(
+                request,
+                'Die Eingabe ist gesperrt: Der Zeitraum ist nicht geöffnet '
+                'oder die Abgabefrist ist abgelaufen.',
+            )
+            return go('availability', ctx)
         try:
             parsed = parse_priorities(request.POST, ctx['slots'])
         except ValueError:
@@ -534,6 +580,7 @@ def availability(request, ctx, employee_id=None):
     ctx.update(
         employee=employee,
         read_only=read_only,
+        locked=locked,
         submission=Submission.objects.filter(employee=employee, month=ctx['month']).first(),
         priority_choices=[
             (0, '× Nicht verfügbar'),

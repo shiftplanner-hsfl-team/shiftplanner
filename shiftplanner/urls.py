@@ -18,6 +18,7 @@ urlpatterns = [
     ),
     path('abmelden/', auth_views.LogoutView.as_view(), name='logout'),
     path('', views.dashboard, name='dashboard'),
+    path('zeitraum/', views.period, name='period'),
     path('bedarf/', views.demand, name='demand'),
     path('vorlagen/', views.templates, name='templates'),
     path('qualifikationen/', views.qualifications, name='qualifications'),

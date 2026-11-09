@@ -49,11 +49,16 @@ class ShiftTemplate(models.Model):
 
 
 class Month(models.Model):
-    """Planungsmonat mit Bedarfsstatus und Revisionszähler für veraltete Pläne (REQ-05)."""
+    """Planungszeitraum (Kalendermonat) mit Abgabefrist, Bedarfsstatus und Revision (REQ-05).
+
+    Ohne Abgabefrist ist der Zeitraum noch nicht geöffnet; bis einschließlich zur Frist
+    ist er offen, danach ist die Eingabe für Mitarbeitende gesperrt (ABW-01).
+    """
 
     date = models.DateField(unique=True)
     revision = models.PositiveIntegerField(default=0)
     demand_saved = models.BooleanField(default=False)
+    deadline = models.DateField('Abgabefrist', null=True, blank=True)
 
     def __str__(self):
         return f'{self.date:%m/%Y}'
