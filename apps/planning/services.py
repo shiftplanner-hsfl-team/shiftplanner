@@ -261,12 +261,8 @@ def readiness(month):
     Args:
         month: Planungsmonat.
 
-    Der Plan ist erzeugbar, wenn der Bedarf gespeichert ist und entweder alle aktiven
-    Mitarbeitenden abgegeben haben (REQ-05 AK 4) oder die Abgabefrist abgelaufen ist
-    (REQ-05 AK 3); fehlende Abgaben gelten dann als „nicht verfügbar“ (REQ-06 AK 3).
-
-    Args:
-        month: Planungsmonat.
+    Bei gespeichertem Bedarf und aktiven Mitarbeitenden kann ein Plan erzeugt werden.
+    Offene Abgaben erfordern eine Bestätigung; sie zählen als nicht verfügbar.
 
     Returns:
         Dictionary mit Anzahl abgegebener, aktiver und fehlender Mitarbeitender, Anzahl
@@ -280,7 +276,7 @@ def readiness(month):
     positions = sum(month_slots(month).values_list('total', flat=True))
     status = period_status(month)
     expired = status == PERIOD_EXPIRED
-    inputs_complete = submitted == total or expired
+    can_generate = bool(month.demand_saved and positions and total)
     return dict(
         submitted=submitted,
         employees=total,
@@ -288,7 +284,8 @@ def readiness(month):
         positions=positions,
         status=status,
         expired=expired,
-        ready=bool(month.demand_saved and positions and total and inputs_complete),
+        can_generate=can_generate,
+        ready=can_generate and submitted == total,
     )
 
 
@@ -467,7 +464,7 @@ def assignment_violations(plan, employee, slot):
 
 
 @transaction.atomic
-def generate_plan(month):
+def generate_plan(month, allow_incomplete=False):
     """Erzeugt den Schichtplan eines Monats und speichert ihn als Snapshot (REQ-08, REQ-09).
 
     Slots werden chronologisch bearbeitet. Berücksichtigt werden nur abgegebene
@@ -477,6 +474,7 @@ def generate_plan(month):
 
     Args:
         month: Planungsmonat.
+        allow_incomplete: Offene Abgaben wurden nach Prüfung ausdrücklich bestätigt.
 
     Returns:
         Gespeicherter ``Plan`` mit Laufzeit in ``duration_ms``.
@@ -486,10 +484,12 @@ def generate_plan(month):
     """
     started = perf_counter()
     month = Month.objects.select_for_update().get(pk=month.pk)
-    if not readiness(month)['ready']:
+    state = readiness(month)
+    if not state['can_generate']:
+        raise ValueError('Bitte zuerst Bedarf mit Positionen und aktive Mitarbeitende anlegen.')
+    if state['missing'] and not allow_incomplete:
         raise ValueError(
-            'Bedarf speichern und alle Verfügbarkeiten abwarten (oder Fristablauf), '
-            'bevor du den Plan erzeugst.'
+            'Bitte offene Abgaben prüfen und die Planerzeugung ausdrücklich bestätigen.'
         )
     slots = list(
         month_slots(month)

@@ -11,33 +11,43 @@ from functools import wraps
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core import signing
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Count
 from django.http import HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.views.decorators.http import require_GET
 
 from . import rules
+from .autofill import fill_unassigned
+from .corrections import correct_plan
 from .forms import (
+    CorrectionForm,
     DeadlineForm,
     EmployeeForm,
     OpeningForm,
+    PlanVisibilityForm,
     QualificationForm,
     TemplateForm,
     VacationForm,
 )
 from .models import (
+    Assignment,
     Availability,
     Employee,
     Month,
     Need,
     Plan,
+    PlanningSettings,
+    PublishedPlan,
     Qualification,
     ShiftTemplate,
     Submission,
     Vacation,
 )
+from .publications import publication_preview, publish_plan, published_timetable, team_plan_visible
 from .rules import Shift
 from .services import (
     ensure_slots,
@@ -236,6 +246,7 @@ def dashboard(request, ctx):
         return render(request, 'planning/dashboard.html', ctx)
     employee = get_object_or_404(Employee, user=request.user)
     ctx['submission'] = Submission.objects.filter(employee=employee, month=ctx['month']).first()
+    ctx['publication'] = PublishedPlan.objects.filter(month=ctx['month']).first()
     ctx['input_open'] = input_open(ctx['month'])
     ctx['available_count'] = Availability.objects.filter(
         employee=employee, slot__month=ctx['month'], priority__gt=0
@@ -462,6 +473,25 @@ def employees(request, ctx):
     Ohne Parameter wird eine neue Person angelegt, mit ``edit`` eine bestehende bearbeitet.
     Fehlende Pflichtfelder werden benannt; dann wird nichts gespeichert (AK 2).
     """
+    visibility_form = PlanVisibilityForm(
+        request.POST
+        if request.method == 'POST' and request.POST.get('action') == 'visibility'
+        else None,
+        initial={'visibility': 'team' if team_plan_visible() else 'own'},
+    )
+    if request.method == 'POST' and request.POST.get('action') == 'visibility':
+        if visibility_form.is_valid():
+            PlanningSettings.objects.update_or_create(
+                pk=1,
+                defaults={'show_team_plan': visibility_form.cleaned_data['visibility'] == 'team'},
+            )
+            messages.success(
+                request, 'Plansicht für das gesamte Team gespeichert. Sie gilt ab sofort.'
+            )
+        else:
+            messages.error(request, 'Bitte eine gültige Plansicht auswählen.')
+        return go('employees', ctx)
+    ctx['visibility_form'] = visibility_form
     selected = request.GET.get('edit') or request.POST.get('id')
     instance = (
         get_object_or_404(Employee.objects.select_related('user'), pk=selected)
@@ -702,10 +732,12 @@ def generate(request, ctx):
     """Schichtplan erzeugen (REQ-08); Vorbedingungen prüft ``services.generate_plan``."""
     if request.method == 'POST':
         try:
-            result = generate_plan(ctx['month'])
+            result = generate_plan(
+                ctx['month'], allow_incomplete=request.POST.get('confirm_incomplete') == 'yes'
+            )
             messages.success(
                 request,
-                f'Schichtplan erzeugt · {result.duration_ms} ms. Das Ergebnis ist nur lesbar.',
+                f'Schichtplan erzeugt · {result.duration_ms} ms. Positionen sind bearbeitbar.',
             )
             return go('plan', ctx)
         except ValueError as error:
@@ -742,6 +774,13 @@ def plan_context(ctx):
     ctx['plan'] = result
     if not result:
         return
+    ctx['publication'] = PublishedPlan.objects.filter(month=ctx['month']).first()
+    if ctx['publication']:
+        preview = publication_preview(ctx['month'])
+        ctx['unpublished_changes'] = (
+            ctx['publication'].source_fingerprint != preview['state']['fingerprint']
+            or ctx['publication'].source_input_revision != ctx['month'].revision
+        )
     rows = list(result.assignments.all())
     ctx.update(
         assigned=sum(a.employee_id is not None for a in rows),
@@ -771,15 +810,93 @@ def plan_context(ctx):
 @planner_only
 @with_context
 def plan(request, ctx):
-    """Erzeugten Schichtplan wochenweise nur lesend anzeigen (REQ-10)."""
+    """Erzeugten Schichtplan mit Links zur Korrektur wochenweise anzeigen (REQ-10/11)."""
     plan_context(ctx)
     return render(request, 'planning/plan.html', ctx)
 
 
 @planner_only
 @with_context
+def correct_assignment(request, ctx, assignment_id):
+    """Zeigt die Vorschau und bestätigt eine manuelle Plankorrektur (REQ-11)."""
+    assignment = get_object_or_404(
+        Assignment.objects.select_related('plan', 'employee__user'),
+        pk=assignment_id,
+        plan__month=ctx['month'],
+    )
+    form = CorrectionForm(
+        request.POST if request.method == 'POST' else None,
+        plan=assignment.plan,
+        assignment=assignment,
+    )
+    ctx.update(assignment=assignment, form=form)
+    if request.method != 'POST':
+        return render(request, 'planning/correction.html', ctx)
+    try:
+        if request.POST.get('confirmation'):
+            data = signing.loads(
+                request.POST['confirmation'], salt='plan-correction', max_age=3600
+            )
+            if data['assignment'] != assignment.pk or data['user'] != request.user.pk:
+                raise ValueError('Diese Bestätigung gehört zu einer anderen Änderung.')
+            result = correct_plan(
+                assignment.plan_id, assignment.pk, data['employee'], data['swap'], data['state']
+            )
+            if not result['errors']:
+                messages.success(request, 'Die Plankorrektur wurde gespeichert.')
+                return go('plan', ctx)
+        elif form.is_valid():
+            person, swap = form.cleaned_data['employee'], form.cleaned_data['swap']
+            person_id = person.pk if person else None
+            swap_id = swap.pk if swap else None
+            result = correct_plan(assignment.plan_id, assignment.pk, person_id, swap_id)
+            if not result['errors']:
+                ctx['confirmation'] = signing.dumps(
+                    {
+                        'assignment': assignment.pk,
+                        'user': request.user.pk,
+                        'employee': person_id,
+                        'swap': swap_id,
+                        'state': result['state'],
+                    },
+                    salt='plan-correction',
+                )
+                ctx['choice'] = str(swap) if swap else (str(person) if person else 'Unbesetzt')
+                ctx['is_swap'] = bool(swap)
+        else:
+            return render(request, 'planning/correction.html', ctx)
+        ctx.update(errors=result['errors'], warnings=result['warnings'])
+    except (ValueError, signing.BadSignature, KeyError):
+        ctx['errors'] = [
+            'Die Änderung ist ungültig oder die Vorschau veraltet. Bitte erneut prüfen.'
+        ]
+    return render(request, 'planning/correction.html', ctx)
+
+
+@planner_only
+@with_context
 def unfilled(request, ctx):
     """Liste der unbesetzten Positionen anzeigen (REQ-09)."""
+    if request.method == 'POST':
+        try:
+            filled, remaining = fill_unassigned(ctx['month'])
+            if filled:
+                label = 'Position' if filled == 1 else 'Positionen'
+                messages.success(
+                    request,
+                    f'{filled} {label} automatisch besetzt · {remaining} weiterhin unbesetzt.',
+                )
+            elif remaining:
+                messages.warning(
+                    request,
+                    'Keine weitere passende Person gefunden. Prüfe offene Abgaben, '
+                    'Qualifikationen, Urlaub und bereits geplante Schichten.',
+                )
+            else:
+                messages.info(request, 'Alle Positionen sind bereits besetzt.')
+        except ValueError as error:
+            messages.error(request, str(error))
+        return go('unfilled', ctx)
     plan_context(ctx)
     return render(request, 'planning/unfilled.html', ctx)
 
@@ -787,3 +904,59 @@ def unfilled(request, ctx):
 def forbidden(request, exception=None):
     """Eigene Fehlerseite für HTTP 403 (QR-03)."""
     return render(request, 'planning/403.html', status=403)
+
+
+@planner_only
+@with_context
+def publish(request, ctx):
+    """Prüft einen Plan vor der ausdrücklichen Veröffentlichung (REQ-15)."""
+    if request.method == 'POST':
+        try:
+            data = signing.loads(
+                request.POST.get('confirmation', ''), salt='publish-plan', max_age=3600
+            )
+            if data['month'] != ctx['month'].pk or data['user'] != request.user.pk:
+                raise ValueError('Diese Bestätigung gehört zu einem anderen Plan.')
+            publish_plan(
+                ctx['month'],
+                request.user,
+                data['state'],
+                acknowledge=request.POST.get('acknowledge') == 'yes',
+            )
+            messages.success(request, 'Der Plan wurde für Mitarbeitende veröffentlicht.')
+            return go('plan', ctx)
+        except (ValueError, signing.BadSignature, KeyError) as error:
+            message = (
+                str(error)
+                if isinstance(error, ValueError)
+                else 'Die Bestätigung ist ungültig oder abgelaufen. Bitte erneut prüfen.'
+            )
+            messages.error(request, message)
+    try:
+        preview = publication_preview(ctx['month'])
+        ctx.update(preview)
+        ctx['confirmation'] = signing.dumps(
+            {'month': ctx['month'].pk, 'user': request.user.pk, 'state': preview['state']},
+            salt='publish-plan',
+        )
+        ctx['publication'] = PublishedPlan.objects.filter(month=ctx['month']).first()
+    except ValueError as error:
+        ctx['preview_error'] = str(error)
+    return render(request, 'planning/publish.html', ctx)
+
+
+@login_required
+@require_GET
+@with_context
+def employee_plan(request, ctx):
+    """Zeigt ausschließlich veröffentlichte Positionen gemäß der gemeinsamen Plansicht."""
+    employee = get_object_or_404(Employee, user=request.user)
+    publication = PublishedPlan.objects.filter(month=ctx['month']).first()
+    show_team = team_plan_visible()
+    rows = publication.assignments.all() if publication else []
+    if publication and not show_team:
+        rows = rows.filter(employee=employee)
+    ctx.update(publication=publication, published_rows=rows, show_team=show_team, weeks=[])
+    if publication:
+        ctx.update(published_timetable(ctx['month'], rows, request.GET.get('week'), employee.pk))
+    return render(request, 'planning/employee_plan.html', ctx)

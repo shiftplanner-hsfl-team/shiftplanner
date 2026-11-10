@@ -235,3 +235,60 @@ class Assignment(models.Model):
     def __str__(self):
         person = self.employee_name or 'Unbesetzt'
         return f'{self.date:%d.%m.} {self.shift_name} · {self.role}: {person}'
+
+
+class PlanningSettings(models.Model):
+    """Gemeinsame Plansicht für Mitarbeitende des Betriebs (REQ-15)."""
+
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    show_team_plan = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=models.Q(id=1), name='one_planning_settings')
+        ]
+
+    def __str__(self):
+        return 'Plansicht für Mitarbeitende'
+
+
+class PublishedPlan(models.Model):
+    """Letzter ausdrücklich veröffentlichter Planstand je Monat (REQ-15)."""
+
+    month = models.OneToOneField(Month, on_delete=models.CASCADE)
+    published_at = models.DateTimeField(auto_now=True)
+    published_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL
+    )
+    source_fingerprint = models.CharField(max_length=64)
+    source_input_revision = models.PositiveIntegerField(default=0)
+
+    def __str__(self):
+        return f'Veröffentlichter Plan {self.month}'
+
+
+class PublishedAssignment(models.Model):
+    """Von bearbeitbaren Positionen unabhängige Kopie einer veröffentlichten Position."""
+
+    publication = models.ForeignKey(
+        PublishedPlan, on_delete=models.CASCADE, related_name='assignments'
+    )
+    position = models.PositiveIntegerField()
+    employee = models.ForeignKey(Employee, on_delete=models.PROTECT, null=True)
+    employee_name = models.CharField(max_length=160, blank=True)
+    date = models.DateField()
+    shift_name = models.CharField(max_length=80)
+    start = models.TimeField()
+    end = models.TimeField()
+    role = models.CharField(max_length=80)
+
+    class Meta:
+        ordering = ['date', 'start', 'position']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['publication', 'position'], name='unique_published_position'
+            )
+        ]
+
+    def __str__(self):
+        return f'{self.date:%d.%m.} {self.shift_name}: {self.employee_name or "Unbesetzt"}'

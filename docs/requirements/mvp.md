@@ -21,11 +21,11 @@ Legende: ✅ umgesetzt und getestet · 🔄 in Arbeit · ⏳ geplant (Sprint) ·
 | REQ-08 | Plan automatisch erzeugen (P1 vor P2 vor P3, deterministisch) | ✅ | `services.generate_plan`, `match_positions`, `is_eligible` | `EngineTests` | #1, #31 |
 | REQ-09 | Unbesetzte Schichten anzeigen | ✅ | `views.unfilled`, `plan_context` | `EngineTests.test_qualification_and_unfilled…`, UI | #1 |
 | REQ-10 | Plan nur lesend ansehen | ✅ | `views.plan`, `plan_context` | `WorkflowTests.test_full_workflow…` | #1 |
-| REQ-11 | Plan manuell korrigieren (inkl. Entscheidung E-01) | 🔄 | Schnittstelle `services.assignment_violations` vorhanden | `ArbZGPlanningTests.test_assignment_violations…` | Bennet, #2 |
+| REQ-11 | Plan manuell korrigieren (inkl. Entscheidung E-01) | ✅ | `views.correct_assignment`, `corrections.correct_plan` | `ManualCorrectionTests`, UI | #2 |
 | REQ-12 | → überführt in RB-01 | – | – | – | – |
 | REQ-13 | Vertragsstunden und Minijob-Grenze | ⏳ Sprint 2 | Daten vorhanden (`Employee.weekly_hours`) | – | #4 |
 | REQ-14 | Urlaub berücksichtigen | ✅ | `views.availability_overview`, `is_eligible` | `EngineTests.test_vacation_overrides…` | #1 |
-| REQ-15 | Plan veröffentlichen | ⏳ Sprint 2 | – | – | #6 |
+| REQ-15 | Plan veröffentlichen | ✅ lokal umgesetzt | `publications.publish_plan`, `views.publish`, `views.employee_plan` | `PublicationTests`, UI Veröffentlichung/Mobil | #6 |
 | REQ-16 | Fairness-Historie | ⚪ | – | – | #7 |
 | REQ-17 | KI-Erklärung | ⏳ Sprint 3 | – | – | #8 |
 | REQ-18 | Genehmigung | ⚪ | – | – | #9 |

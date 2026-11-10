@@ -154,6 +154,36 @@ class WorkflowTests(TestCase):
         self.client.post('/plan/erzeugen/')
         self.assertFalse(Plan.objects.exists())
 
+    def test_open_submissions_can_be_confirmed_before_deadline(self):
+        self.login()
+        response = self.client.get('/plan/erzeugen/?month=2026-11')
+        self.assertContains(response, '2 Abgaben noch offen')
+        self.assertContains(response, 'Ich habe die offenen Abgaben geprüft')
+        self.assertEqual(
+            self.client.post('/plan/erzeugen/', {'confirm_incomplete': 'yes'}).status_code, 302
+        )
+        self.assertTrue(Plan.objects.exists())
+        self.assertFalse(
+            Assignment.objects.filter(
+                employee__in=[self.ben, Employee.objects.get(user__first_name='Eva')]
+            ).exists()
+        )
+
+    def test_confirmation_never_bypasses_missing_demand(self):
+        self.login()
+        Month.objects.filter(pk=self.month.pk).update(demand_saved=False)
+        self.client.post('/plan/erzeugen/', {'confirm_incomplete': 'yes'})
+        self.assertFalse(Plan.objects.exists())
+
+    def test_generating_without_confirmation_preserves_existing_plan(self):
+        self.complete()
+        plan = generate_plan(self.month)
+        before = list(plan.assignments.values_list('pk', 'employee_id'))
+        Submission.objects.filter(employee=self.ben, month=self.month).update(submitted=False)
+        self.login()
+        self.client.post('/plan/erzeugen/')
+        self.assertEqual(before, list(plan.assignments.values_list('pk', 'employee_id')))
+
     def test_full_workflow_plan_is_persisted_deterministic_and_read_only(self):
         self.complete()
         self.login()
@@ -169,7 +199,7 @@ class WorkflowTests(TestCase):
             first,
             list(Assignment.objects.values_list('slot_id', 'position', 'employee_id', 'priority')),
         )
-        self.assertContains(self.client.get('/plan/'), 'Nur lesen')
+        self.assertContains(self.client.get('/plan/'), 'Bearbeitbar')
         self.assertContains(self.client.get('/plan/unbesetzt/'), 'Unbesetzt')
         count = Assignment.objects.count()
         self.client.post('/plan/', {'employee_id': self.lea.pk})
@@ -391,9 +421,10 @@ class DeadlineTests(TestCase):
         self.assertFalse(readiness(self.month)['ready'])
         with override_settings(SHIFTPLANNER_TODAY='2026-10-29'):
             state = readiness(self.month)
-            self.assertTrue(state['ready'])
+            self.assertTrue(state['can_generate'])
+            self.assertFalse(state['ready'])
             self.assertEqual(state['missing'], 2)
-            self.client.post('/plan/erzeugen/', {'month': '2026-11'})
+            self.client.post('/plan/erzeugen/', {'month': '2026-11', 'confirm_incomplete': 'yes'})
         assigned = set(
             Assignment.objects.exclude(employee=None).values_list('employee_id', flat=True)
         )
@@ -694,3 +725,480 @@ class OpeningDayTests(TestCase):
         employee = Client()
         employee.login(username='lea.meyer@example.com', password='ShiftDemo2026!')
         self.assertEqual(employee.post('/oeffnungstage/', {'month': '2026-11'}).status_code, 403)
+
+
+@override_settings(PASSWORD_HASHERS=FAST_PASSWORDS)
+class ManualCorrectionTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import Group
+
+        self.planner = User.objects.create_user('planner', password='password')
+        self.planner.groups.add(Group.objects.create(name='Planung'))
+        self.a = Employee.objects.create(user=User.objects.create_user('a', first_name='Anna'))
+        self.b = Employee.objects.create(user=User.objects.create_user('b', first_name='Ben'))
+        self.month = Month.objects.create(date=date(2026, 11, 1))
+        self.plan = Plan.objects.create(month=self.month, revision=0)
+        self.q = Qualification.objects.create(name='Kasse')
+        self.template = ShiftTemplate.objects.create(name='Früh', start=time(8), end=time(14))
+        self.slot = Slot.objects.create(
+            month=self.month, date=date(2026, 11, 2), template=self.template, total=2
+        )
+        Need.objects.create(slot=self.slot, qualification=self.q, count=1)
+        self.first = self.assignment(self.slot, 0, self.a, 'Kasse')
+        self.second = self.assignment(self.slot, 1, None, 'Ohne Vorgabe')
+        self.client.force_login(self.planner)
+
+    def assignment(self, slot, position, employee, role):
+        return Assignment.objects.create(
+            plan=self.plan,
+            slot=slot,
+            employee=employee,
+            position=position,
+            role=role,
+            date=slot.date,
+            shift_name=slot.template.name,
+            start=slot.template.start,
+            end=slot.template.end,
+            employee_name=str(employee) if employee else '',
+        )
+
+    def url(self, assignment=None):
+        return f'/plan/position/{(assignment or self.first).pk}/?month=2026-11'
+
+    def preview(self, data, assignment=None):
+        return self.client.post(self.url(assignment), data)
+
+    def confirm(self, response, assignment=None):
+        return self.client.post(
+            self.url(assignment), {'confirmation': response.context['confirmation']}
+        )
+
+    def test_replace_warns_and_only_saves_after_confirmation(self):
+        response = self.preview({'employee': self.b.pk})
+        self.assertContains(response, 'Keine abgegebene Verfügbarkeit')
+        self.assertContains(response, 'erforderliche Qualifikation')
+        self.first.refresh_from_db()
+        self.assertEqual(self.first.employee, self.a)
+        self.assertEqual(self.confirm(response).status_code, 302)
+        self.first.refresh_from_db()
+        self.assertEqual(self.first.employee, self.b)
+        self.assertEqual(self.first.employee_name, 'Ben')
+        self.assertIsNone(self.first.priority)
+
+    def test_remove_and_reassign_open_position(self):
+        self.assertEqual(self.confirm(self.preview({})).status_code, 302)
+        self.first.refresh_from_db()
+        self.assertIsNone(self.first.employee)
+        self.assertEqual(self.first.employee_name, '')
+        self.assertEqual(self.confirm(self.preview({'employee': self.b.pk})).status_code, 302)
+        self.first.refresh_from_db()
+        self.assertEqual(self.first.employee, self.b)
+
+    def test_same_shift_duplicate_is_blocked(self):
+        response = self.preview({'employee': self.a.pk}, self.second)
+        self.assertContains(response, 'Überschneidung')
+        self.assertNotIn('confirmation', response.context)
+        self.second.refresh_from_db()
+        self.assertIsNone(self.second.employee)
+
+    def test_working_hours_violation_is_blocked(self):
+        late = ShiftTemplate.objects.create(name='Spät', start=time(14), end=time(20))
+        slot = Slot.objects.create(month=self.month, date=self.slot.date, template=late)
+        position = self.assignment(slot, 0, None, 'Ohne Vorgabe')
+        response = self.preview({'employee': self.a.pk}, position)
+        self.assertContains(response, 'Mehr als 10 Stunden')
+        self.assertNotIn('confirmation', response.context)
+
+    def test_swap_works_atomically_and_keeps_snapshot_correct(self):
+        later = ShiftTemplate.objects.create(name='Spät', start=time(14), end=time(18))
+        slot = Slot.objects.create(month=self.month, date=date(2026, 11, 3), template=later)
+        other = self.assignment(slot, 0, self.b, 'Ohne Vorgabe')
+        response = self.preview({'swap': other.pk})
+        self.assertContains(response, 'Tausch mit')
+        self.assertEqual(self.confirm(response).status_code, 302)
+        self.first.refresh_from_db()
+        other.refresh_from_db()
+        self.assertEqual((self.first.employee, other.employee), (self.b, self.a))
+        self.assertEqual((self.first.employee_name, other.employee_name), ('Ben', 'Anna'))
+
+    def test_stale_preview_is_rejected(self):
+        response = self.preview({'employee': self.b.pk})
+        self.month.revision += 1
+        self.month.save()
+        self.assertContains(self.confirm(response), 'Vorschau veraltet')
+        self.first.refresh_from_db()
+        self.assertEqual(self.first.employee, self.a)
+
+    def test_correction_is_planner_only_and_foreign_position_is_rejected(self):
+        self.client.force_login(self.a.user)
+        self.assertEqual(self.client.get(self.url()).status_code, 403)
+        self.assertEqual(self.client.post(self.url(), {}).status_code, 403)
+        self.client.force_login(self.planner)
+        self.assertEqual(
+            self.client.get(f'/plan/position/{self.first.pk}/?month=2026-12').status_code, 404
+        )
+
+    def test_invalid_confirmation_does_not_save(self):
+        self.assertContains(self.client.post(self.url(), {'confirmation': 'invalid'}), 'ungültig')
+        self.first.refresh_from_db()
+        self.assertEqual(self.first.employee, self.a)
+
+    def test_priority_and_vacation_warnings_can_be_confirmed(self):
+        self.b.qualifications.add(self.q)
+        Submission.objects.create(employee=self.b, month=self.month, submitted=True)
+        Availability.objects.create(employee=self.b, slot=self.slot, priority=3)
+        Vacation.objects.create(employee=self.b, start=self.slot.date, end=self.slot.date)
+        response = self.preview({'employee': self.b.pk})
+        self.assertContains(response, 'Priorität 3')
+        self.assertContains(response, 'Urlaub ist eingetragen')
+        self.assertEqual(self.confirm(response).status_code, 302)
+        self.first.refresh_from_db()
+        self.assertEqual(self.first.priority, 3)
+
+    def test_swap_rejects_conflict_without_changing_either_position(self):
+        template = ShiftTemplate.objects.create(name='Spät', start=time(14), end=time(22))
+        slot = Slot.objects.create(month=self.month, date=self.slot.date, template=template)
+        other = self.assignment(slot, 0, self.b, 'Ohne Vorgabe')
+        extra_slot = Slot.objects.create(
+            month=self.month, date=date(2026, 11, 3), template=self.template
+        )
+        self.assignment(extra_slot, 0, self.a, 'Ohne Vorgabe')
+        response = self.preview({'swap': other.pk})
+        self.assertContains(response, '§ 5')
+        self.assertNotIn('confirmation', response.context)
+        self.first.refresh_from_db()
+        other.refresh_from_db()
+        self.assertEqual((self.first.employee, other.employee), (self.a, self.b))
+
+    def test_autofill_keeps_existing_assignments_and_fills_open_position(self):
+        Submission.objects.create(employee=self.b, month=self.month, submitted=True)
+        Availability.objects.create(employee=self.b, slot=self.slot, priority=2)
+        before = (self.first.pk, self.first.employee_id, self.first.employee_name)
+        response = self.client.post('/plan/unbesetzt/?month=2026-11', follow=True)
+        self.assertContains(response, '1 Position automatisch besetzt')
+        self.first.refresh_from_db()
+        self.second.refresh_from_db()
+        self.assertEqual((self.first.pk, self.first.employee_id, self.first.employee_name), before)
+        self.assertEqual((self.second.employee, self.second.priority), (self.b, 2))
+
+    def test_autofill_requires_submitted_availability_and_qualification(self):
+        self.first.employee = None
+        self.first.employee_name = ''
+        self.first.save()
+        Submission.objects.create(employee=self.b, month=self.month, submitted=False)
+        Availability.objects.create(employee=self.b, slot=self.slot, priority=1)
+        self.client.post('/plan/unbesetzt/?month=2026-11')
+        self.assertEqual(self.plan.assignments.filter(employee__isnull=True).count(), 2)
+        Submission.objects.filter(employee=self.b).update(submitted=True)
+        self.client.post('/plan/unbesetzt/?month=2026-11')
+        self.first.refresh_from_db()
+        self.second.refresh_from_db()
+        self.assertIsNone(self.first.employee)
+        self.assertEqual(self.second.employee, self.b)
+
+    def test_autofill_respects_other_shifts_even_when_later_in_plan(self):
+        Submission.objects.create(employee=self.b, month=self.month, submitted=True)
+        Availability.objects.create(employee=self.b, slot=self.slot, priority=1)
+        late = ShiftTemplate.objects.create(name='Andere Schicht', start=time(12), end=time(18))
+        slot = Slot.objects.create(month=self.month, date=self.slot.date, template=late)
+        self.assignment(slot, 0, self.b, 'Ohne Vorgabe')
+        self.client.post('/plan/unbesetzt/?month=2026-11')
+        self.second.refresh_from_db()
+        self.assertIsNone(self.second.employee)
+
+    def test_autofill_uses_new_submissions_on_outdated_plan(self):
+        self.month.revision = 1
+        self.month.save()
+        Submission.objects.create(employee=self.b, month=self.month, submitted=True)
+        Availability.objects.create(employee=self.b, slot=self.slot, priority=1)
+        self.client.post('/plan/unbesetzt/?month=2026-11')
+        self.second.refresh_from_db()
+        self.plan.refresh_from_db()
+        self.assertEqual(self.second.employee, self.b)
+        self.assertNotEqual(self.plan.revision, self.month.revision)
+
+    def test_autofill_is_restricted_to_planner(self):
+        self.client.force_login(self.b.user)
+        self.assertEqual(self.client.post('/plan/unbesetzt/?month=2026-11').status_code, 403)
+
+    def test_autofill_explains_when_no_person_is_eligible(self):
+        response = self.client.post('/plan/unbesetzt/?month=2026-11', follow=True)
+        self.assertContains(response, 'Keine weitere passende Person gefunden')
+        self.assertContains(response, 'Abgaben prüfen')
+
+
+@override_settings(PASSWORD_HASHERS=FAST_PASSWORDS, SHIFTPLANNER_TODAY='2026-10-20')
+class PublicationTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import Group
+
+        self.planner = User.objects.create_user('planner')
+        self.planner.groups.add(Group.objects.create(name='Planung'))
+        self.anna = Employee.objects.create(
+            user=User.objects.create_user('anna', first_name='Anna')
+        )
+        self.ben = Employee.objects.create(user=User.objects.create_user('ben', first_name='Ben'))
+        self.month = Month.objects.create(date=date(2026, 11, 1), demand_saved=True)
+        self.plan = Plan.objects.create(month=self.month, revision=0)
+        self.template = ShiftTemplate.objects.create(name='Früh', start=time(8), end=time(14))
+        self.slot = Slot.objects.create(
+            month=self.month, date=date(2026, 11, 2), template=self.template, total=2
+        )
+        self.first = self.position(0, self.anna)
+        self.second = self.position(1, self.ben)
+        self.client.force_login(self.planner)
+        self.publish_url = '/plan/veroeffentlichen/?month=2026-11'
+        self.employee_url = '/mein-schichtplan/?month=2026-11'
+
+    def position(self, index, employee):
+        return Assignment.objects.create(
+            plan=self.plan,
+            slot=self.slot,
+            position=index,
+            employee=employee,
+            employee_name=str(employee) if employee else '',
+            date=self.slot.date,
+            shift_name=self.template.name,
+            start=self.template.start,
+            end=self.template.end,
+            role='Ohne Vorgabe',
+            priority=1 if employee else None,
+        )
+
+    def publish(self, acknowledge='yes'):
+        response = self.client.get(self.publish_url)
+        return self.client.post(
+            self.publish_url,
+            {'confirmation': response.context['confirmation'], 'acknowledge': acknowledge},
+        )
+
+    def publication(self):
+        from .models import PublishedPlan
+
+        return PublishedPlan.objects.get(month=self.month)
+
+    def test_unpublished_plan_is_never_exposed_and_preview_does_not_publish(self):
+        from .models import PublishedPlan
+
+        self.client.get(self.publish_url)
+        self.assertFalse(PublishedPlan.objects.exists())
+        self.client.force_login(self.anna.user)
+        response = self.client.get(self.employee_url)
+        self.assertContains(response, 'Für diesen Monat wurde noch kein Plan veröffentlicht')
+        self.assertNotContains(response, 'Ben')
+
+    def test_default_view_only_shows_own_snapshot_and_ignores_foreign_employee_parameter(self):
+        self.assertEqual(self.publish().status_code, 302)
+        self.client.force_login(self.anna.user)
+        response = self.client.get(self.employee_url + f'&employee={self.ben.pk}')
+        self.assertContains(response, 'Meine Schichten')
+        self.assertEqual(
+            list(response.context['published_rows'].values_list('employee_id', flat=True)),
+            [self.anna.pk],
+        )
+        self.assertNotContains(response, 'Ben')
+        self.assertNotContains(response, 'Priorität')
+        self.assertContains(
+            self.client.get('/?month=2026-11'), 'Dein Schichtplan ist veröffentlicht'
+        )
+
+    def test_team_setting_applies_immediately_without_invalidating_draft(self):
+        self.publish()
+        self.client.post(
+            '/mitarbeitende/?month=2026-11', {'action': 'visibility', 'visibility': 'team'}
+        )
+        self.month.refresh_from_db()
+        self.assertEqual(self.month.revision, 0)
+        self.client.force_login(self.anna.user)
+        self.assertContains(self.client.get(self.employee_url), 'Ben')
+        self.client.force_login(self.planner)
+        self.client.post(
+            '/mitarbeitende/?month=2026-11', {'action': 'visibility', 'visibility': 'own'}
+        )
+        self.client.force_login(self.anna.user)
+        self.assertNotContains(self.client.get(self.employee_url), 'Ben')
+
+    def test_employee_cannot_publish_or_change_visibility_or_read_draft(self):
+        self.client.force_login(self.anna.user)
+        for method in (self.client.get, self.client.post):
+            self.assertEqual(method(self.publish_url).status_code, 403)
+        self.assertEqual(
+            self.client.post(
+                '/mitarbeitende/', {'action': 'visibility', 'visibility': 'team'}
+            ).status_code,
+            403,
+        )
+        self.assertEqual(self.client.get('/plan/').status_code, 403)
+        self.assertEqual(self.client.post(self.employee_url).status_code, 405)
+        self.client.logout()
+        self.assertEqual(self.client.get(self.employee_url).status_code, 302)
+
+    def test_publication_requires_csrf(self):
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.planner)
+        self.assertEqual(client.post(self.publish_url).status_code, 403)
+
+    def test_missing_positions_need_acknowledgement_and_own_empty_state(self):
+        from .models import PublishedPlan
+
+        self.first.employee = None
+        self.first.employee_name = ''
+        self.first.save()
+        self.assertEqual(self.publish(acknowledge='').status_code, 200)
+        self.assertFalse(PublishedPlan.objects.exists())
+        self.assertEqual(self.publish().status_code, 302)
+        self.client.force_login(self.anna.user)
+        self.assertContains(
+            self.client.get(self.employee_url),
+            'Du hast in diesem Monat keine zugewiesenen Schichten',
+        )
+        self.client.force_login(self.planner)
+        self.client.post('/mitarbeitende/', {'action': 'visibility', 'visibility': 'team'})
+        self.client.force_login(self.anna.user)
+        self.assertContains(self.client.get(self.employee_url), 'Unbesetzt')
+
+    def test_stale_inputs_warn_and_require_confirmation(self):
+        from .models import PublishedPlan
+
+        self.month.revision = 1
+        self.month.save()
+        response = self.client.get(self.publish_url)
+        self.assertContains(response, 'bisherigen Planstand')
+        self.publish(acknowledge='')
+        self.assertFalse(PublishedPlan.objects.exists())
+        self.publish()
+        response = self.client.get('/plan/?month=2026-11')
+        self.assertFalse(response.context['unpublished_changes'])
+
+    def test_complete_plan_can_be_published_without_warning_acknowledgement(self):
+        self.assertEqual(self.publish(acknowledge='').status_code, 302)
+        self.assertEqual(self.publication().published_by, self.planner)
+        self.assertEqual(self.publication().assignments.count(), 2)
+
+    def test_concurrent_change_or_tampered_confirmation_is_rejected(self):
+        from .models import PublishedPlan
+
+        response = self.client.get(self.publish_url)
+        self.first.employee_name = 'Anderer Stand'
+        self.first.save()
+        result = self.client.post(
+            self.publish_url, {'confirmation': response.context['confirmation']}
+        )
+        self.assertContains(result, 'Bitte erneut prüfen')
+        self.assertFalse(PublishedPlan.objects.exists())
+        self.client.post(self.publish_url, {'confirmation': 'invalid', 'acknowledge': 'yes'})
+        self.assertFalse(PublishedPlan.objects.exists())
+
+    def test_confirmation_cannot_publish_a_different_month(self):
+        from .models import PublishedPlan
+
+        response = self.client.get(self.publish_url)
+        self.client.post(
+            '/plan/veroeffentlichen/?month=2026-12',
+            {'confirmation': response.context['confirmation']},
+        )
+        self.assertFalse(PublishedPlan.objects.exists())
+
+    def test_missing_plan_has_no_publish_action(self):
+        response = self.client.get('/plan/veroeffentlichen/?month=2026-12')
+        self.assertContains(response, 'Bitte zuerst einen Schichtplan erzeugen')
+        self.assertNotContains(response, 'name="confirmation"')
+
+    def test_corrections_and_autofill_do_not_change_published_snapshot(self):
+        from .autofill import fill_unassigned
+        from .corrections import correct_plan
+
+        self.publish()
+        before = list(self.publication().assignments.values_list('employee_id', 'employee_name'))
+        preview = correct_plan(self.plan.pk, self.first.pk)
+        correct_plan(self.plan.pk, self.first.pk, expected=preview['state'])
+        self.assertEqual(
+            list(self.publication().assignments.values_list('employee_id', 'employee_name')),
+            before,
+        )
+        Submission.objects.create(employee=self.anna, month=self.month, submitted=True)
+        Availability.objects.create(employee=self.anna, slot=self.slot, priority=1)
+        self.assertEqual(fill_unassigned(self.month), (1, 0))
+        self.assertEqual(
+            list(self.publication().assignments.values_list('employee_id', 'employee_name')),
+            before,
+        )
+
+    def test_regeneration_keeps_publication_until_republished(self):
+        self.publish()
+        publication_id = self.publication().pk
+        for employee in (self.anna, self.ben):
+            Submission.objects.create(employee=employee, month=self.month, submitted=True)
+            Availability.objects.create(employee=employee, slot=self.slot, priority=0)
+        generate_plan(self.month)
+        self.assertEqual(self.publication().assignments.filter(employee__isnull=False).count(), 2)
+        self.assertContains(
+            self.client.get('/plan/?month=2026-11'), 'Unveröffentlichte Änderungen'
+        )
+        self.publish()
+        self.assertEqual(self.publication().pk, publication_id)
+        self.assertEqual(self.publication().assignments.filter(employee__isnull=True).count(), 2)
+
+    def test_failure_rolls_back_previous_publication(self):
+        from unittest.mock import patch
+
+        from .publications import publication_preview, publish_plan
+
+        self.publish()
+        previous = list(self.publication().assignments.values_list('pk', 'employee_id'))
+        with (
+            patch(
+                'apps.planning.publications.PublishedAssignment.objects.bulk_create',
+                side_effect=RuntimeError('test'),
+            ),
+            self.assertRaises(RuntimeError),
+        ):
+            publish_plan(self.month, self.planner, publication_preview(self.month)['state'])
+        self.assertEqual(
+            list(self.publication().assignments.values_list('pk', 'employee_id')), previous
+        )
+
+    def test_timetable_groups_team_positions_by_shift_and_day(self):
+        self.publish()
+        self.client.post('/mitarbeitende/', {'action': 'visibility', 'visibility': 'team'})
+        self.client.force_login(self.anna.user)
+        response = self.client.get(self.employee_url)
+        self.assertEqual(response.context['selected_monday'], '2026-11-02')
+        table = response.context['timetable_rows']
+        self.assertEqual(len(table), 1)
+        self.assertEqual(len(table[0]['cells']), 7)
+        monday = table[0]['cells'][0]['positions']
+        self.assertEqual(
+            [item['assignment'].employee_id for item in monday], [self.anna.pk, self.ben.pk]
+        )
+        self.assertEqual([item['own'] for item in monday], [True, False])
+        self.assertContains(response, 'Schichtplan der Woche')
+
+    def test_timetable_filters_weeks_and_handles_invalid_selection(self):
+        self.publish()
+        self.client.force_login(self.anna.user)
+        response = self.client.get(self.employee_url + '&week=2026-11-09')
+        self.assertEqual(response.context['selected_monday'], '2026-11-09')
+        self.assertEqual(response.context['timetable_rows'], [])
+        self.assertContains(response, 'Du hast in dieser Woche keine zugewiesenen Schichten')
+        self.assertEqual(response.context['previous_week'], '2026-11-02')
+        self.assertEqual(response.context['next_week'], '2026-11-16')
+        response = self.client.get(self.employee_url + '&week=invalid')
+        self.assertEqual(response.context['selected_monday'], '2026-11-02')
+        self.assertEqual(len(response.context['timetable_rows']), 1)
+
+    def test_timetable_uses_publication_and_handles_year_boundary(self):
+        from .publications import published_timetable
+
+        self.publish()
+        self.first.shift_name = 'Interner Entwurf'
+        self.first.save()
+        self.client.force_login(self.anna.user)
+        response = self.client.get(self.employee_url)
+        self.assertNotContains(response, 'Interner Entwurf')
+        self.assertNotContains(response, 'Ben')
+        context = published_timetable(Month(date=date(2027, 1, 1)), [], '2026-12-28')
+        self.assertEqual(context['week_number'], 53)
+        self.assertEqual(context['next_week'], '2027-01-04')
+        self.assertTrue(context['timetable_days'][0]['outside'])
+        self.assertFalse(context['timetable_days'][4]['outside'])

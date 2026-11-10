@@ -53,7 +53,7 @@ ungespeicherter Eingaben. Kein externer Dienst wird zur Laufzeit aufgerufen.
   für die Vollständigkeitsprüfung; nur abgegebene Verfügbarkeiten gehen in die
   Planung ein. Nach Fristablauf ist die Eingabe gesperrt.
 - Vacation: Zeitraum ohne Begründungsfeld, durch die Planung erfasst.
-- Plan/Assignment: persistierter nur lesbarer Plan, einschließlich nicht
+- Plan/Assignment: persistierter, manuell korrigierbarer Plan, einschließlich nicht
   besetzbarer Positionen. Datum, Zeit, Namen und Rollen werden als Snapshot
   gespeichert. Nach einer Eingabeänderung zeigt der Revisionsvergleich einen
   Hinweis auf den veralteten Stand.
@@ -66,8 +66,8 @@ Django schützt Formulare mit CSRF; Abmelden erfolgt per POST.
 ## Algorithmus (REQ-08)
 
 1. Vorbedingungen prüfen (`readiness`): gespeicherter Bedarf, positive
-   Positionenzahl, mindestens eine aktive Person und entweder alle Monatsabgaben
-   vorhanden (REQ-05 AK 4) oder Abgabefrist abgelaufen (REQ-05 AK 3).
+   Positionenzahl und mindestens eine aktive Person. Offene Monatsabgaben müssen
+   vor der Erzeugung geprüft und ausdrücklich bestätigt werden.
 2. Slots chronologisch nach Datum, Beginn und stabiler ID bearbeiten.
 3. Bedarf in einzelne Positionen mit Qualifikationsvorgabe auflösen; Rest ohne Vorgabe.
 4. Kandidaten filtern (`is_eligible`): keine positive Slot-Verfügbarkeit, Urlaub,
@@ -94,8 +94,8 @@ keine KI-Planung und keinen versteckten Planverlauf als Einflussgröße.
 Die gesetzlichen Rahmenbedingungen liegen in einem eigenen Modul ohne Datenbank- und
 HTTP-Abhängigkeit. Die Planerzeugung fragt in der Kandidatenfilterung
 (`services.is_eligible`, Schritt 4 des Algorithmus) nur `rules.is_allowed(...)`; die
-manuelle Korrektur (REQ-11) nutzt `services.assignment_violations(...)` und zeigt die
-Meldungen als Warnung. So bleibt die Kopplung lose und alle Grenzwerte stehen an einer
+manuelle Korrektur (REQ-11) nutzt `corrections.correct_plan(...)`, blockiert harte
+Konflikte und zeigt weiche Hinweise vor der Bestätigung. So bleibt die Kopplung lose und alle Grenzwerte stehen an einer
 Stelle (Reformdiskussion ArbZG).
 
 | Regel | Grenze | Umsetzung |
@@ -120,3 +120,20 @@ Produktivbetrieb benötigt eine gesonderte Last-/Nebenläufigkeitsprüfung und e
 geeignete Serverdatenbank. Es gibt keine öffentliche Registrierung,
 Passwort-Zurücksetzung oder Audit-Historie. Fachlich vollständige Arbeitszeit-
 und Datenschutzfreigabe sind nicht Gegenstand dieses Implementierungsnachweises.
+
+## Veröffentlichung (REQ-15, lokale Erweiterung)
+
+`publications.py` trennt den bearbeitbaren Plan vom letzten freigegebenen Stand.
+`PublishedPlan` und `PublishedAssignment` speichern den Zeitpunkt, das Planungskonto
+und eine unabhängige Kopie der Positionen ohne Verfügbarkeitsprioritäten. Es besteht
+keine Abhängigkeit zu bearbeitbaren Assignment- oder Slot-Datensätzen. Erneutes
+Veröffentlichen ersetzt den bisherigen Snapshot atomar; eine Historie wird nicht geführt.
+Eine signierte Prüfseite und Sperren auf Monat/Plan verhindern eine Freigabe eines
+zwischenzeitlich geänderten Stands. Offene Positionen und veraltete Eingaben erfordern
+eine ausdrückliche Bestätigung.
+
+`PlanningSettings` enthält eine gemeinsame Plansicht für alle Mitarbeitenden. Ohne
+Einstellung sind nur eigene veröffentlichte Schichten sichtbar. Ein Wechsel auf den
+Teamplan gilt sofort und verändert keine Eingaberevision. `/mein-schichtplan/` filtert
+serverseitig anhand dieser Einstellung und des angemeldeten Kontos; private Angaben
+und interne Entwürfe werden niemals über diese Ansicht bereitgestellt.

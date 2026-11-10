@@ -1,0 +1,8 @@
+{% extends 'planning/base.html' %}{% block content %}
+<div class="page-heading"><h1>Position bearbeiten</h1><p>{{ assignment.date|date:'D, d.m.Y' }} · {{ assignment.shift_name }} · {{ assignment.start|time:'H:i' }}–{{ assignment.end|time:'H:i' }}</p></div>
+<section class="card"><h2>Aktuelle Besetzung</h2><p>{{ assignment.employee_name|default:'Unbesetzt' }} · {{ assignment.role }}</p>
+{% if errors %}<div class="message warning" role="alert"><strong>Änderung nicht möglich</strong><ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul></div>{% endif %}
+{% if confirmation %}<h2>Änderung prüfen</h2><p>{% if is_swap %}Tausch mit: {% else %}Neue Besetzung: {% endif %}<strong>{{ choice }}</strong></p>{% if warnings %}<div class="message warning" role="alert"><strong>Bitte beachten</strong><ul>{% for warning in warnings %}<li>{{ warning }}</li>{% endfor %}</ul></div>{% else %}<p>Keine Konflikte oder Hinweise gefunden.</p>{% endif %}<form method="post">{% csrf_token %}<input type="hidden" name="confirmation" value="{{ confirmation }}"><button type="submit">Änderung bestätigen</button></form><p><a href="{% url 'correct_assignment' assignment.pk %}?month={{ month_value }}">Andere Auswahl treffen</a></p>
+{% else %}<p>Wähle eine Person aus. Für eine freie Position die Person leer lassen. Für einen Tausch stattdessen eine zweite Position wählen.</p><form method="post" class="stack">{% csrf_token %}{{ form.non_field_errors }}{{ form.as_p }}<button type="submit">Änderung prüfen</button></form>{% endif %}</section>
+<div class="actions"><a class="button secondary" href="{% url 'plan' %}?month={{ month_value }}">Zurück zum Schichtplan</a></div>
+{% endblock %}

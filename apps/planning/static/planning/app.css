@@ -31,3 +31,52 @@
 .plan-table .plan-cell .missing{padding:0;background:transparent}
 .plan-table .plan-cell small{margin-top:4px}
 .period-form{display:grid;gap:10px}.period-form label{color:#fff;font-size:12px}.period-form input{color:var(--ink)}.holiday{display:block;color:var(--red);font-size:10px;font-weight:600}
+/* Kompakte Auswahl für die Korrektur einer einzelnen Planposition. */
+.correction-menu{margin-top:10px;border-top:1px solid rgba(28,83,62,.14);padding-top:7px}
+.correction-menu summary{display:flex;align-items:center;justify-content:space-between;gap:6px;cursor:pointer;color:var(--green);font-size:11px;font-weight:700;list-style:none}
+.correction-menu summary::-webkit-details-marker{display:none}
+.correction-menu summary::after{content:'+';font-size:17px;line-height:1;font-weight:400}
+.correction-menu[open] summary::after{content:'−'}
+.correction-links{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:4px}
+.correction-links li{margin:0;padding:0;min-width:0}
+.correction-links a{display:flex;align-items:center;justify-content:space-between;gap:5px;min-height:40px;padding:7px 8px;border:1px solid rgba(28,83,62,.12);border-radius:7px;background:rgba(255,255,255,.8);color:var(--ink);font-size:11px;line-height:1.3;text-decoration:none}
+.correction-links a:hover{background:#fff;border-color:var(--green)}
+.correction-person{display:grid;gap:2px;min-width:0;overflow-wrap:anywhere}
+.correction-person small{color:var(--muted);font-size:10px;font-weight:400}
+.correction-arrow{flex:none;font-size:18px;line-height:1;color:var(--green)}
+
+/* Freigabe und mobile Liste der veröffentlichten Schichten. */
+.publication-status{display:flex;gap:8px;flex-wrap:wrap}
+.visibility-form{display:flex;align-items:end;gap:16px;flex-wrap:wrap}
+.visibility-control{display:grid;gap:7px;flex:1;min-width:200px;max-width:360px}
+.published-shift{display:flex;align-items:center;gap:20px;padding:18px 0;border-top:1px solid var(--line);flex-wrap:wrap}
+.published-date,.published-description{display:grid;gap:4px}
+.published-date{min-width:120px}.published-description{flex:1;min-width:120px}
+.published-schedule h2{margin-bottom:16px}
+@media(max-width:700px){.published-shift{gap:12px}.published-shift .badge{max-width:100%;overflow-wrap:anywhere}.visibility-form button{width:100%}.visibility-control{max-width:none}.published-date{min-width:105px}}
+
+/* Wochen-Stundenplan für freigegebene Schichten. */
+.timetable-week-select{display:grid;gap:7px;font-size:12px}
+.timetable-heading{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:22px}
+.published-schedule .timetable-heading h2{margin-bottom:2px}.timetable-heading p{font-size:13px}
+.week-navigation{display:flex;gap:8px}.week-navigation .button{padding:8px 14px;min-width:40px}.week-navigation [aria-disabled]{opacity:.35;cursor:default}
+.timetable-key{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted)}.timetable-key i{width:9px;height:9px;border-radius:50%;background:var(--green)}
+.timetable-scroll{position:relative;border:1px solid var(--line);border-radius:10px;isolation:isolate}
+.published-timetable{border-collapse:separate;border-spacing:0;table-layout:fixed;min-width:1050px;margin:0}
+.published-timetable thead th{padding:14px 10px;text-align:center;border-bottom:1px solid var(--line)}
+.published-timetable thead th:first-child{width:130px;text-align:left}
+.published-timetable thead th span{display:block;font-size:11px}.published-timetable thead th strong{display:block;color:var(--ink);font-size:14px;margin-top:2px}
+.published-timetable tbody th{background:#fff;padding:20px 12px;position:sticky;left:0;z-index:1;border-right:1px solid var(--line);font-size:12px}
+.published-timetable tbody th small{font-size:11px;white-space:nowrap;font-weight:400}
+.published-timetable td{padding:8px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);height:110px;background:#fbfcfb}
+.published-timetable tbody tr:last-child td,.published-timetable tbody tr:last-child th{border-bottom:0}.published-timetable td:last-child{border-right:0}
+.timetable-block{display:grid;gap:5px}
+.published-timetable .timetable-person{display:grid;gap:4px;margin:0;padding:10px 9px;min-height:56px;line-height:1.35;border:1px solid #dfebe4;border-radius:7px;background:#edf4ef;overflow-wrap:anywhere}
+.timetable-person strong{font-size:11px;color:var(--green)}.timetable-person small{font-size:10px;color:var(--muted)}
+.published-timetable .own-shift{border-left:3px solid var(--green);background:#dceee1}.published-timetable .open-shift{background:var(--red-bg);border-color:#ebd9d6}.open-shift strong{color:var(--red)}
+.published-timetable .outside-month{background:#f3f5f3;color:#a5aea8}.published-timetable .outside-month strong{color:#a5aea8}
+.timetable-empty{display:block;text-align:center;color:#c5cec8;padding-top:16px}.published-timetable .timetable-empty-week{text-align:center;padding:40px;color:var(--muted)}
+.timetable-mobile-hint{display:none}
+@media(max-width:700px){.timetable-week-select{flex:1;min-width:0}.timetable-week-select select{max-width:100%;min-width:0;width:100%}.published-schedule{padding:14px}.timetable-heading{margin-bottom:14px}.timetable-mobile-hint{display:block;font-size:11px;margin-bottom:12px}.published-timetable{min-width:1000px}.published-timetable thead th:first-child{width:110px}.published-timetable tbody th{padding:18px 8px}.timetable-key{font-size:11px}}
+
+@media(max-width:700px){.monthbar:has(.timetable-week-select){display:grid;grid-template-columns:minmax(0,1fr) auto}.monthbar:has(.timetable-week-select)>label{grid-column:1/-1}.monthbar:has(.timetable-week-select) input{width:100%}.timetable-week-select select{width:100%}}

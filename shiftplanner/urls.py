@@ -27,8 +27,13 @@ urlpatterns = [
     path('verfuegbarkeiten/', views.availability_overview, name='availability_overview'),
     path('meine-verfuegbarkeiten/', views.availability, name='availability'),
     path('verfuegbarkeiten/<int:employee_id>/', views.availability, name='employee_availability'),
+    path('mein-schichtplan/', views.employee_plan, name='employee_plan'),
+    path('plan/veroeffentlichen/', views.publish, name='publish'),
     path('plan/erzeugen/', views.generate, name='generate'),
     path('plan/', views.plan, name='plan'),
+    path(
+        'plan/position/<int:assignment_id>/', views.correct_assignment, name='correct_assignment'
+    ),
     path('plan/unbesetzt/', views.unfilled, name='unfilled'),
 ]
 handler403 = 'apps.planning.views.forbidden'
