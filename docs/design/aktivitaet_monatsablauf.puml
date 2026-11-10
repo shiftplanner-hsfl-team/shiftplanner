@@ -1,42 +1,50 @@
 @startuml
-title Aktivitätsdiagramm: Monatsablauf
+title Aktivitätsdiagramm: Monatsablauf (Stand Sprint 1)
 
-|Führungskraft|
+|Chef / Planung|
 start
-:Führungskraft legt\nBedarf fest\n(Schichtvorlagen,\nQualifikationen);
-:Führungskraft legt\nUrlaube fest;
+:Betrieb einrichten
+(Vorlagen, Qualifikationen,
+Mitarbeitende anlegen);
+:Planungszeitraum öffnen
+(Abgabefrist setzen);
+:Öffnungstage festlegen
+(Sonntage optional, Feiertage markiert);
+:Bedarf und Urlaub erfassen;
 
 |Mitarbeitende|
-fork
-  :Mitarbeitende\ntragen Verfügbar-\nkeiten ein\n(Prio 1-3);
-  :Mitarbeitende\ngeben Verfügbar-\nkeit ab;
-fork again
-  :Mitarbeitende\ntragen Urlaub ein;
-end fork
+:Verfügbarkeiten eintragen
+(Priorität 1–3, Entwurf);
+:Angaben abgeben;
 
 |System|
-:Alle Abgaben\nvorhanden?;
-
-if (Ja) then (nein)
-  :Warten auf\nAbgaben;
-  :Plan markiert\nals "unvollständig";
-else (ja)
-  :Plan erzeugen\n(services.py);
-  :Plan als\nSnapshot speichern;
+if (Alle abgegeben oder Frist abgelaufen?) then (ja)
+  if (Frist abgelaufen?) then (ja)
+    :Eingabe für Mitarbeitende sperren;
+    note right: fehlende Angaben gelten\nals nicht verfügbar
+  else (nein)
+  endif
+  :Plan erzeugen
+  (Urlaub, Überschneidung, ArbZG prüfen);
+  :Plan als Snapshot speichern;
+else (nein)
+  :Warten auf Abgaben
+  oder Fristablauf;
+  detach
 endif
 
-|Führungskraft|
-:Führungskraft\nprüft Plan;
-
+|Chef / Planung|
+:Plan prüfen (nur lesend);
 if (Korrektur nötig?) then (ja)
-  :Führungskraft korrigiert\nmanuell (Sprint 1);
+  :Person ändern (REQ-11, in Arbeit);
+  if (Verstoß gegen ArbZG?) then (ja)
+    :Änderung blockiert (E-01);
+  else (nein)
+    :speichern, ggf. Hinweis;
+  endif
 else (nein)
 endif
-
-:Führungskraft\nveröffentlicht Plan;
-
-:Mitarbeitende\nsehen ihren Plan\n(nur lesbar);
-
+:Plan veröffentlichen (REQ-15, Sprint 2);
 stop
 
 @enduml
