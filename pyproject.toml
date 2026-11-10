@@ -1,0 +1,42 @@
+# Werkzeugkonfiguration für ShiftPlanner.
+# Die Regeln und ihre Begründung stehen in CONTRIBUTING.md (Abschnitt Coding-Standards).
+
+[tool.ruff]
+line-length = 99
+target-version = "py312"
+extend-exclude = ["*/migrations/*"]
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.ruff.lint]
+select = [
+    "E", "W",  # pycodestyle: PEP 8
+    "F",       # Pyflakes: ungenutzte Importe/Variablen, undefinierte Namen
+    "I",       # isort: Importreihenfolge
+    "N",       # pep8-naming: Namenskonventionen
+    "D",       # pydocstyle: Docstrings (Ein-/Ausgaben, Rolle)
+    "B",       # flake8-bugbear: typische Fehlerquellen
+    "UP",      # pyupgrade: moderne Python-Syntax
+    "SIM",     # flake8-simplify: unnötig komplizierte Konstrukte
+    "DJ",      # flake8-django: Django-spezifische Regeln
+    "C90",     # mccabe: zyklomatische Komplexität
+]
+ignore = [
+    "D104",  # Paket-__init__.py ohne Inhalt
+    "D105",  # __str__ u. ä. sind selbsterklärend
+    "D106",  # innere Meta-Klassen von Django
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
+"apps/*/tests.py" = ["D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.isort]
+known-first-party = ["apps", "shiftplanner"]

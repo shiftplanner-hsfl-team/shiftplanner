@@ -1,10 +1,15 @@
+"""Django-Administration für Stammdaten (technischer Zugang, nicht für die Planung)."""
+
 from django.contrib import admin
+
 from .models import Employee, Qualification, ShiftTemplate, Vacation
 
 
 @admin.register(Employee)
 class EmployeeAdmin(admin.ModelAdmin):
-    list_display = ['user']
+    """Verwaltung der Mitarbeitendenprofile mit Qualifikationsauswahl."""
+
+    list_display = ['user', 'contract_type', 'weekly_hours']
     filter_horizontal = ['qualifications']
 
 

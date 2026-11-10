@@ -1,43 +1,46 @@
 @startuml
-title Sequenzdiagramm: Plan erzeugen (UC-04)
+title Sequenzdiagramm: Plan erzeugen (UC-04, Stand Sprint 1)
 
-actor "Führungskraft" as chef
+actor "Chef / Planung" as chef
 participant "Browser" as browser
-participant "Views\n(planner_only)" as views
-participant "Services\n(match_positions)" as services
+participant "Views\n(generate)" as views
+participant "Services\n(services.py)" as services
+participant "Regeln\n(rules.py)" as rules
 participant "Models" as models
-database "Datenbank" as db
+database "SQLite" as db
 
-chef -> browser : Klick "Plan erzeugen"
-browser -> views : POST /planning/generate/
-views -> views : Rolle prüfen (planner_only)
+chef -> browser : Klick „Schichtplan erzeugen“
+browser -> views : POST /plan/erzeugen/
+views -> views : planner_only (Rolle prüfen)
 
-alt Rolle fehlt
-  views --> browser : HTTP 403 Forbidden
-  browser --> chef : Fehlermeldung
-else Rolle vorhanden
-  views -> models : readiness() prüfen
-  
-  alt Vorbedingungen nicht erfüllt
-    models --> views : False
+alt keine Planungsrolle
+  views --> browser : HTTP 403
+else Planungsrolle
+  views -> services : generate_plan(month)
+  services -> services : readiness(month)
+  note right
+    ready = Bedarf gespeichert
+    und (alle abgegeben oder Frist abgelaufen)
+  end note
+
+  alt nicht bereit
+    services --> views : ValueError
     views --> browser : Fehlermeldung (UC-04 1a)
-    browser --> chef : "Fehlende Eingaben"
-  else Vorbedingungen erfüllt
-    views -> services : generate_plan(month)
-    services -> models : Slots laden (chronologisch)
-    models -> db : SELECT slot
-    
-    loop Für jeden Slot
-      services -> models : Kandidaten filtern\n(Urlaub, Überschneidung, Qualifikation)
-      services -> services : match_positions()\n(Prio 1 vor 2 vor 3)
-      services -> models : Assignment speichern
+  else bereit
+    services -> models : Slots der Öffnungstage (month_slots)\nnur abgegebene Verfügbarkeiten, Urlaube
+    models -> db : SELECT
+    loop je Slot, chronologisch
+      loop je Kandidat
+        services -> services : is_eligible(shift, assigned, vacations)\nUrlaub? Überschneidung?
+        services -> rules : is_allowed(assigned, shift)
+        rules --> services : True / False (10 h/Tag, 48 h/Woche, 11 h Ruhe)
+      end
+      services -> services : match_positions()\nP1 vor P2 vor P3, deterministisch
     end
-    
-    services -> models : Plan als Snapshot speichern
+    services -> models : Plan + Assignments als Snapshot\n(unbesetzt = employee NULL)
     models -> db : INSERT plan, assignments
-    services --> views : duration_ms
-    views --> browser : Plan-Ansicht mit unbesetzten Schichten
-    browser --> chef : Plan angezeigt
+    services --> views : Plan (duration_ms)
+    views --> browser : Redirect /plan/ (nur lesend)
   end
 end
 

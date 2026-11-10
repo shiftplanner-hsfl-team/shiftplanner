@@ -1,0 +1,54 @@
+@startuml
+skinparam componentStyle rectangle
+skinparam backgroundColor #FEFEFE
+skinparam componentBackgroundColor #E3F2FD
+skinparam componentBorderColor #1976D2
+skinparam componentFontColor #000000
+
+title ShiftPlanner – Komponentenübersicht (Schichtenarchitektur, Stand Sprint 1)
+
+package "1. Darstellung" {
+  [Templates\n(Django Templates)] as templates
+  [Static Files\n(CSS, JS)] as static
+  [Template-Filter\n(templatetags: holiday)] as tags
+}
+
+package "2. Zugriff und Abläufe" {
+  [Views\n(urls.py, views.py)] as views
+  [Forms\n(forms.py)] as forms
+}
+
+package "3. Planung" {
+  [Services\n(services.py)] as services
+  [Regelmodul\n(rules.py: RB-01, RB-03)] as rules
+}
+
+package "4. Persistenz" {
+  [Models\n(models.py)] as models
+  database "SQLite" as db
+}
+
+templates --> views : HTTP-Anfrage / render
+templates ..> static
+templates --> tags
+tags ..> rules : holiday_name()
+views --> forms : Validierung
+views --> services : Aufruf
+services --> rules : is_allowed() / violations()
+services --> models : Datenzugriff (ORM)
+models --> db
+
+note bottom of rules
+  Ohne Datenbank- und HTTP-Zugriff.
+  Grenzwerte als Konstanten:
+  10 h/Tag, 48 h/Woche, 11 h Ruhezeit,
+  Pausen nach § 4 ArbZG.
+end note
+
+note right of services
+  Information Hiding: Views kennen
+  den Algorithmus nicht, nur
+  generate_plan(), readiness() u. a.
+end note
+
+@enduml

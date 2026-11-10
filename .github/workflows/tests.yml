@@ -15,6 +15,10 @@ jobs:
           python-version: "3.14"
           cache: pip
       - run: pip install -r requirements-dev.txt
+      - name: Coding-Standards (ruff, siehe CONTRIBUTING.md)
+        run: |
+          ruff format --check .
+          ruff check --output-format=github .
       - run: python -m playwright install --with-deps chromium
       - run: python manage.py check
       - run: python manage.py makemigrations --check --dry-run

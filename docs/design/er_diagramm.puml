@@ -1,50 +1,76 @@
 @startuml
-title ER-Diagramm: 13 Tabellen (Krähenfußnotation)
+title ER-Diagramm: 13 Tabellen der App + Django-Benutzer (Krähenfußnotation, Stand Sprint 1)
+
+hide circle
+skinparam linetype ortho
+
+entity auth_user {
+  * id : int <<PK>>
+  --
+  username : varchar <<unique>>
+  first_name : varchar
+  last_name : varchar
+  is_active : boolean
+}
 
 entity Employee {
   * id : int <<PK>>
   --
-  user_id : int <<FK>>
+  user_id : int <<FK, unique>>
   contract_type : varchar
-  min_hours : decimal
-  max_hours : decimal
-  is_active : boolean
+  weekly_hours : decimal(4,1) <<null>>
 }
 
 entity Qualification {
   * id : int <<PK>>
   --
-  name : varchar
+  name : varchar <<unique>>
+  description : varchar
 }
 
 entity Employee_Qualification {
-  * employee_id : int <<PK,FK>>
-  * qualification_id : int <<PK,FK>>
+  * employee_id : int <<FK>>
+  * qualification_id : int <<FK>>
 }
 
 entity ShiftTemplate {
   * id : int <<PK>>
   --
-  name : varchar
-  start_time : time
-  end_time : time
+  name : varchar <<unique>>
+  start : time
+  end : time
+  description : varchar
 }
 
 entity Month {
   * id : int <<PK>>
   --
-  year : int
-  month : int
-  need_status : varchar
+  date : date <<unique>>
   revision : int
+  demand_saved : boolean
+  deadline : date <<null>>
+  open_weekdays : varchar(7)
+}
+
+entity MonthDay {
+  * id : int <<PK>>
+  --
+  month_id : int <<FK>>
+  date : date
+  is_open : boolean
+  ..
+  unique (month_id, date)
 }
 
 entity Slot {
   * id : int <<PK>>
   --
-  date : date
+  month_id : int <<FK>>
   template_id : int <<FK>>
-  total_need : int
+  date : date
+  total : smallint
+  ..
+  unique (date, template_id)
 }
 
 entity Need {
@@ -52,7 +78,9 @@ entity Need {
   --
   slot_id : int <<FK>>
   qualification_id : int <<FK>>
-  count : int
+  count : smallint
+  ..
+  unique (slot_id, qualification_id)
 }
 
 entity Availability {
@@ -60,7 +88,9 @@ entity Availability {
   --
   employee_id : int <<FK>>
   slot_id : int <<FK>>
-  priority : int
+  priority : smallint
+  ..
+  unique (employee_id, slot_id)
 }
 
 entity Submission {
@@ -68,24 +98,27 @@ entity Submission {
   --
   employee_id : int <<FK>>
   month_id : int <<FK>>
-  status : varchar
+  submitted : boolean
+  updated_at : datetime
+  ..
+  unique (employee_id, month_id)
 }
 
-entity Leave {
+entity Vacation {
   * id : int <<PK>>
   --
   employee_id : int <<FK>>
-  start_date : date
-  end_date : date
+  start : date
+  end : date
 }
 
 entity Plan {
   * id : int <<PK>>
   --
-  month_id : int <<FK>>
+  month_id : int <<FK, unique>>
+  revision : int
   created_at : datetime
-  duration_ms : float
-  is_published : boolean
+  duration_ms : int
 }
 
 entity Assignment {
@@ -93,24 +126,36 @@ entity Assignment {
   --
   plan_id : int <<FK>>
   slot_id : int <<FK>>
-  employee_id : int <<FK>>
-  need_id : int <<FK>>
+  employee_id : int <<FK, null>>
+  position : smallint
+  role : varchar
+  priority : smallint <<null>>
+  date : date
+  shift_name : varchar
+  start : time
+  end : time
+  employee_name : varchar
+  ..
+  unique (plan_id, slot_id, position)
 }
 
-Employee ||--o{ Employee_Qualification : hat
-Qualification ||--o{ Employee_Qualification : wird besessen von
+auth_user ||--|| Employee
+Employee ||--o{ Employee_Qualification
+Qualification ||--o{ Employee_Qualification
+Employee ||--o{ Availability
+Employee ||--o{ Submission
+Employee ||--o{ Vacation
+Employee |o--o{ Assignment
 
-Employee ||--o{ Availability : trägt ein
-Employee ||--o{ Submission : gibt ab
-Employee ||--o{ Leave : nimmt
-Employee ||--o{ Assignment : wird zugewiesen
-
-Month ||--|{ Slot : enthält
-Slot }|--|| ShiftTemplate : nutzt
-
-Slot ||--|{ Need : hat
-Qualification ||--o{ Need : erfordert
-
-Plan ||--|{ Assignment : enthält
+Month ||--o{ MonthDay
+Month ||--o{ Slot
+Month ||--o{ Submission
+Month ||--o| Plan
+ShiftTemplate ||--o{ Slot
+Slot ||--o{ Need
+Qualification ||--o{ Need
+Slot ||--o{ Availability
+Plan ||--o{ Assignment
+Slot ||--o{ Assignment
 
 @enduml
