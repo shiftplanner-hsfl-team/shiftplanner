@@ -1,0 +1,12 @@
+{% extends 'planning/base.html' %}
+{% block content %}
+<div class="page-heading"><h1>Veröffentlichung prüfen</h1><p>{{ month_label }} · Mitarbeitende sehen erst nach deiner Bestätigung diesen Stand.</p></div>
+{% if preview_error %}<div class="message warning" role="alert">{{ preview_error }}</div>{% else %}
+<div class="metrics"><article class="card metric"><small>Positionen insgesamt</small><strong>{{ total }}</strong></article><article class="card metric"><small>Besetzt</small><strong>{{ assigned }}</strong></article><article class="card metric sand"><small>Unbesetzt</small><strong>{{ unfilled_count }}</strong></article></div>
+<section class="card"><h2>{% if publication %}Änderungen veröffentlichen{% else %}Plan veröffentlichen{% endif %}</h2><p>Dieser Monatsplan wird für Mitarbeitende freigegeben. Weitere Bearbeitungen werden erst nach einer erneuten Veröffentlichung sichtbar.</p>
+{% if stale %}<div class="message warning" role="alert">Die Eingaben wurden seit der Erzeugung geändert. Du veröffentlichst den bisherigen Planstand.</div>{% endif %}
+{% if unfilled_count %}<div class="message warning" role="alert">{{ unfilled_count }} Positionen bleiben unbesetzt. Du kannst den Plan trotzdem veröffentlichen.</div>{% endif %}
+<form method="post" class="stack" data-busy>{% csrf_token %}<input type="hidden" name="confirmation" value="{{ confirmation }}">{% if needs_acknowledgement %}<label class="checkbox"><input type="checkbox" name="acknowledge" value="yes" required>Ich habe die Hinweise geprüft und möchte diesen Planstand trotzdem veröffentlichen.</label>{% endif %}<button type="submit">{% if publication %}Änderungen veröffentlichen{% else %}Plan veröffentlichen{% endif %}</button></form>
+</section>{% endif %}
+<div class="actions"><a class="button secondary" href="{% url 'plan' %}?month={{ month_value }}">Zurück zum Schichtplan</a></div>
+{% endblock %}

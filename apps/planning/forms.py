@@ -4,7 +4,7 @@ from django import forms
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 
-from .models import Employee, Qualification, ShiftTemplate, Vacation
+from .models import Assignment, Employee, Qualification, ShiftTemplate, Vacation
 
 
 class DeadlineForm(forms.Form):
@@ -198,3 +198,59 @@ class EmployeeForm(forms.Form):
             for name, errors in self.errors.as_data().items()
             if name in self.fields and any(e.code == 'required' for e in errors)
         ]
+
+
+class CorrectionForm(forms.Form):
+    """Auswahl einer Person oder einer zweiten Position für REQ-11."""
+
+    employee = forms.ModelChoiceField(
+        label='Person zuweisen', queryset=Employee.objects.none(), required=False
+    )
+    swap = forms.ModelChoiceField(
+        label='Alternativ: mit Position tauschen',
+        queryset=Assignment.objects.none(),
+        required=False,
+    )
+
+    def __init__(self, *args, plan, assignment, **kwargs):
+        """Beschränkt die Auswahl auf aktive Personen und Positionen desselben Plans.
+
+        Args:
+            *args: Positionsargumente für das Formular.
+            plan: Aktueller Plan.
+            assignment: Zu bearbeitende Position.
+            **kwargs: Weitere Formularargumente.
+        """
+        super().__init__(*args, **kwargs)
+        self.fields['employee'].queryset = (
+            Employee.objects.filter(user__is_active=True)
+            .select_related('user')
+            .order_by('user__last_name', 'user__first_name')
+        )
+        self.fields['swap'].queryset = plan.assignments.exclude(pk=assignment.pk).select_related(
+            'employee__user'
+        )
+        self.fields['employee'].empty_label = 'Unbesetzt'
+        self.fields['swap'].empty_label = 'Kein Tausch'
+
+    def clean(self):
+        """Verhindert widersprüchliche Änderungen.
+
+        Returns:
+            Bereinigte Formulardaten.
+        """
+        data = super().clean()
+        if data.get('employee') and data.get('swap'):
+            raise forms.ValidationError(
+                'Bitte eine Person auswählen oder zwei Positionen tauschen.'
+            )
+        return data
+
+
+class PlanVisibilityForm(forms.Form):
+    """Gemeinsame Sichtbarkeit veröffentlichter Pläne für das gesamte Team."""
+
+    visibility = forms.ChoiceField(
+        label='Plansicht für Mitarbeitende',
+        choices=[('own', 'Nur eigene Schichten'), ('team', 'Gesamten Teamplan')],
+    )
