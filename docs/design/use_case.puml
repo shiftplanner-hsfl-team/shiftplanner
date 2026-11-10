@@ -1,31 +1,35 @@
 @startuml
-title UML-Use-Case-Diagramm: ShiftPlanner
+title UML-Use-Case-Diagramm: ShiftPlanner (UC-01 bis UC-05, Stand Sprint 1)
 
 left to right direction
+skinparam packageStyle rectangle
 
-actor "Führungskraft" as chef
+actor "Chef / Planung" as chef
 actor "Mitarbeitende" as employee
 
 rectangle "ShiftPlanner" {
-  usecase "Bedarf erfassen\n(UC-01)" as UC1
-  usecase "Verfügbarkeiten\neintragen\n(UC-02)" as UC2
-  usecase "Urlaub eintragen\n(UC-03)" as UC3
-  usecase "Plan erzeugen\n(UC-04)" as UC4
-  usecase "Plan veröffentlichen\n(UC-05)" as UC5
+  usecase "UC-01 Betrieb einrichten\n(Vorlagen, Qualifikationen,\nMitarbeitende anlegen)" as UC1
+  usecase "UC-02 Planungsmonat und\nBedarf festlegen\n(Abgabefrist, Öffnungstage,\nBedarf, Urlaub)" as UC2
+  usecase "UC-03 Verfügbarkeiten\nabgeben (Priorität 1–3)" as UC3
+  usecase "UC-04 Schichtplan\nerzeugen" as UC4
+  usecase "UC-05 Schichtplan\nansehen (nur lesend)" as UC5
+  usecase "Plan manuell korrigieren\n(REQ-11, in Arbeit)" as UC6
+  usecase "Plan veröffentlichen\n(REQ-15, Sprint 2)" as UC7
 }
 
 chef --> UC1
+chef --> UC2
 chef --> UC4
 chef --> UC5
-
-employee --> UC2
 employee --> UC3
 
-UC4 ..> UC2 : <<include>>
-UC4 ..> UC3 : <<include>>
+UC6 .> UC5 : <<extend>>
+UC7 .> UC5 : <<extend>>
 
 note right of UC4
-  Automatische Zuordnung\nmit Priorität 1-3\nMarkiert unbesetzte Schichten
+  Vorbedingung: Bedarf gespeichert und
+  alle haben abgegeben ODER Frist abgelaufen.
+  Prüft Urlaub, Überschneidung und ArbZG (RB-01).
 end note
 
 @enduml
