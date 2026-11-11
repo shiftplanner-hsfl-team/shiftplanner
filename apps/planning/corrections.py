@@ -125,7 +125,10 @@ def correct_plan(plan_id, assignment_id, employee_id=None, swap_id=None, expecte
     plan = Plan.objects.select_related('month').get(pk=plan_id)
     Month.objects.select_for_update().get(pk=plan.month_id)
     plan = Plan.objects.select_for_update().select_related('month').get(pk=plan_id)
-    rows = list(plan.assignments.select_for_update().select_related('employee__user', 'slot'))
+    # Personen sind optional; PostgreSQL darf die äußeren Joins nicht mitsperren.
+    rows = list(
+        plan.assignments.select_for_update(of=('self',)).select_related('employee__user', 'slot')
+    )
     by_id = {a.pk: a for a in rows}
     if assignment_id not in by_id or (
         swap_id and (swap_id not in by_id or swap_id == assignment_id)

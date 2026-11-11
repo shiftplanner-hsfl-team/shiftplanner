@@ -29,3 +29,33 @@ jobs:
         with:
           name: ui-screenshots
           path: test-artifacts/
+
+  postgres:
+    name: Backend mit PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: shiftplanner_test
+          POSTGRES_USER: shiftplanner
+          POSTGRES_PASSWORD: postgres-ci-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U shiftplanner -d shiftplanner_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DJANGO_SETTINGS_MODULE: tests.postgres_settings
+      PGPASSWORD: postgres-ci-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+      - run: pip install -r requirements-dev.txt 'psycopg[binary]==3.3.8'
+      - run: python manage.py test apps.planning --verbosity 1
