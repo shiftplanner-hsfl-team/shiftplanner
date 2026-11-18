@@ -68,7 +68,7 @@ def fill_unassigned(month):
     )
     employees = {
         e.pk: e
-        for e in Employee.objects.filter(user__is_active=True)
+        for e in Employee.objects.filter(company=month.company, user__is_active=True)
         .select_related('user')
         .prefetch_related('qualifications')
     }
@@ -82,7 +82,7 @@ def fill_unassigned(month):
     ):
         available[value.slot_id][value.employee_id] = value.priority
     vacations = defaultdict(list)
-    for vacation in Vacation.objects.all():
+    for vacation in Vacation.objects.filter(employee__company=month.company):
         vacations[vacation.employee_id].append(vacation)
     busy = defaultdict(list)
     unfilled = defaultdict(list)

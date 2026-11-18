@@ -9,6 +9,7 @@ from . import rules
 from .models import (
     Assignment,
     Availability,
+    CompanyAccount,
     Employee,
     Month,
     Need,
@@ -18,9 +19,17 @@ from .models import (
     Slot,
     Submission,
     Vacation,
+    default_company_id,
 )
 from .rules import Shift
 from .services import assignment_violations, generate_plan, match_positions, readiness
+
+
+def company_user(*args, **kwargs):
+    user = User.objects.create_user(*args, **kwargs)
+    CompanyAccount.objects.create(user=user, company_id=default_company_id())
+    return user
+
 
 FAST_PASSWORDS = ['django.contrib.auth.hashers.MD5PasswordHasher']
 
@@ -254,7 +263,7 @@ class EngineTests(TestCase):
         )
 
     def employee(self, name, priority=1, qualifications=None, slot=None):
-        user = User.objects.create_user(name)
+        user = company_user(name)
         employee = Employee.objects.create(user=user)
         employee.qualifications.set(qualifications or [])
         Submission.objects.create(employee=employee, month=self.month, submitted=True)
@@ -592,7 +601,7 @@ class ArbZGPlanningTests(TestCase):
 
     def setUp(self):
         self.month = Month.objects.create(date=date(2026, 11, 1), demand_saved=True)
-        self.user = User.objects.create_user('one')
+        self.user = company_user('one')
         self.emp = Employee.objects.create(user=self.user)
         Submission.objects.create(employee=self.emp, month=self.month, submitted=True)
 
@@ -732,10 +741,10 @@ class ManualCorrectionTests(TestCase):
     def setUp(self):
         from django.contrib.auth.models import Group
 
-        self.planner = User.objects.create_user('planner', password='password')
+        self.planner = company_user('planner', password='password')
         self.planner.groups.add(Group.objects.create(name='Planung'))
-        self.a = Employee.objects.create(user=User.objects.create_user('a', first_name='Anna'))
-        self.b = Employee.objects.create(user=User.objects.create_user('b', first_name='Ben'))
+        self.a = Employee.objects.create(user=company_user('a', first_name='Anna'))
+        self.b = Employee.objects.create(user=company_user('b', first_name='Ben'))
         self.month = Month.objects.create(date=date(2026, 11, 1))
         self.plan = Plan.objects.create(month=self.month, revision=0)
         self.q = Qualification.objects.create(name='Kasse')
@@ -932,12 +941,10 @@ class PublicationTests(TestCase):
     def setUp(self):
         from django.contrib.auth.models import Group
 
-        self.planner = User.objects.create_user('planner')
+        self.planner = company_user('planner')
         self.planner.groups.add(Group.objects.create(name='Planung'))
-        self.anna = Employee.objects.create(
-            user=User.objects.create_user('anna', first_name='Anna')
-        )
-        self.ben = Employee.objects.create(user=User.objects.create_user('ben', first_name='Ben'))
+        self.anna = Employee.objects.create(user=company_user('anna', first_name='Anna'))
+        self.ben = Employee.objects.create(user=company_user('ben', first_name='Ben'))
         self.month = Month.objects.create(date=date(2026, 11, 1), demand_saved=True)
         self.plan = Plan.objects.create(month=self.month, revision=0)
         self.template = ShiftTemplate.objects.create(name='Früh', start=time(8), end=time(14))

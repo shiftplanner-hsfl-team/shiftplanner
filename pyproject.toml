@@ -45,7 +45,7 @@ known-first-party = ["apps", "shiftplanner"]
 # Anweisungs- und Zweigabdeckung der App (Testkonzept, Abschnitte 3 und 7).
 branch = true
 source = ["apps"]
-omit = ["*/migrations/*", "*/tests.py"]
+omit = ["*/migrations/*", "*/tests.py", "*/test_*.py"]
 
 [tool.coverage.report]
 # Endekriterium: mindestens 90 % (Testkonzept, Abschnitt 7).

@@ -34,6 +34,8 @@ class BrowserTests(StaticLiveServerTestCase):
         ):
             Submission.objects.update(submitted=True)
             generate_plan(Month.objects.get())
+        if self._testMethodName == 'test_prepared_future_months_allow_ten_availability_entries':
+            call_command('prepare_usertests', verbosity=0)
         self.playwright = sync_playwright().start()
         self.browser = self.playwright.chromium.launch()
         self.browser_context = self.browser.new_context(viewport={'width': 1440, 'height': 1000})
@@ -64,6 +66,51 @@ class BrowserTests(StaticLiveServerTestCase):
 
     def assert_no_overflow(self):
         self.assertTrue(self.page.evaluate('document.documentElement.scrollWidth <= innerWidth'))
+
+    def test_empty_company_login_and_setup_are_isolated(self):
+        self.login('planer1')
+        expect(self.page.locator('.branch')).to_contain_text('TESTUNTERNEHMEN 1')
+        self.page.get_by_role('link', name='Mitarbeitende', exact=True).click()
+        expect(self.page.locator('main')).not_to_contain_text('Lea Meyer')
+        self.page.get_by_role('link', name='Schichtvorlagen', exact=True).click()
+        self.page.get_by_label('Name der Vorlage', exact=True).fill('Nur für Testunternehmen 1')
+        self.page.get_by_label('Beginn', exact=True).fill('09:00')
+        self.page.get_by_label('Ende', exact=True).fill('15:00')
+        self.page.get_by_role('button', name='Vorlage speichern').click()
+        expect(self.page.get_by_role('heading', name='Nur für Testunternehmen 1')).to_be_visible()
+        self.logout()
+        self.login('nora.krueger')
+        self.page.get_by_role('link', name='Schichtvorlagen', exact=True).click()
+        expect(self.page.get_by_role('heading', name='Frühschicht', exact=True)).to_be_visible()
+        expect(self.page.locator('main')).not_to_contain_text('Nur für Testunternehmen 1')
+        self.logout()
+        self.login('planer2')
+        self.page.set_viewport_size({'width': 360, 'height': 900})
+        expect(self.page.locator('main')).to_contain_text('Testunternehmen 2')
+        self.assert_no_overflow()
+        self.page.goto(self.live_server_url + '/vorlagen/')
+        expect(self.page.locator('main')).not_to_contain_text('Nur für Testunternehmen 1')
+
+    @override_settings(SHIFTPLANNER_TODAY='2026-11-20')
+    def test_prepared_future_months_allow_ten_availability_entries(self):
+
+        self.page.set_viewport_size({'width': 360, 'height': 900})
+        for login, month, week in [('mia.hansen', '2026-12', 50), ('tom.weber', '2027-01', 1)]:
+            self.login(login)
+            self.page.goto(
+                self.live_server_url + f'/meine-verfuegbarkeiten/?month={month}&week={week}'
+            )
+            fields = self.page.locator('select[data-mirror]')
+            self.assertGreaterEqual(fields.count(), 10)
+            for i in range(10):
+                expect(fields.nth(i)).to_be_enabled()
+                fields.nth(i).select_option('2')
+            self.page.get_by_role('button', name='Entwurf speichern', exact=True).click()
+            expect(self.page.get_by_role('status')).to_contain_text('Entwurf gespeichert')
+            self.page.get_by_role('button', name='Angaben abgeben', exact=True).click()
+            expect(self.page.get_by_role('status')).to_contain_text('Alles abgegeben')
+            self.assert_no_overflow()
+            self.logout()
 
     def test_planner_demand_template_and_qualification(self):
         self.login('nora.krueger')

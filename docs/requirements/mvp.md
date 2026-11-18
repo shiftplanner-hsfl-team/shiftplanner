@@ -64,11 +64,11 @@ Legende: ✅ umgesetzt und getestet · 🔄 in Arbeit · ⏳ geplant (Sprint) ·
 |---|---|
 | ABW-01 Abgabefrist | **geschlossen** mit PR #29, von beiden Planern bestätigt (FB-12, FB-14) |
 | ABW-02 Mitarbeitende anlegen | **geschlossen** mit PR #30, von beiden Planern bestätigt (FB-12, FB-14) |
-| ABW-03 Mehrere Betriebe | offen, bleibt Anforderung; relevant erst mit Mandantenfähigkeit |
+| ABW-03 Mehrere Betriebe | technische Trennung mit Company/CompanyAccount umgesetzt; drei leere Testbetriebe, fachliche Abnahme noch offen |
 
 ## Bewusste Grenzen
 
-Ein Betrieb je Installation; Nachtschichten über Mitternacht nicht enthalten (REQ-03);
+Ein Betrieb pro Konto; keine öffentliche Registrierung oder Unternehmenswechsel im Konto. Nachtschichten über Mitternacht nicht enthalten (REQ-03);
 der Ausgleichszeitraum nach § 3 Satz 2 ArbZG wird nicht nachgehalten (siehe
 `docs/design/architektur.md`). Die Abnahme aller Akzeptanzkriterien durch reale
 Nutzerinnen und Nutzer erfolgt in den Nutzertests (P6).

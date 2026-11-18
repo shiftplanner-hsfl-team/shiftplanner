@@ -36,6 +36,7 @@ from .forms import (
 from .models import (
     Assignment,
     Availability,
+    CompanyAccount,
     Employee,
     Month,
     Need,
@@ -155,7 +156,11 @@ def context(request):
     """
     raw = request.GET.get('month') or request.POST.get('month') or '2026-11'
     day = parse_month(raw)
-    month, _ = Month.objects.get_or_create(date=day)
+    try:
+        company = request.user.companyaccount.company
+    except CompanyAccount.DoesNotExist as error:
+        raise PermissionDenied('Diesem Konto ist kein Unternehmen zugeordnet.') from error
+    month, _ = Month.objects.get_or_create(company=company, date=day)
     ensure_slots(month)
     slots = month_slots(month).select_related('template').prefetch_related('needs__qualification')
     dates = sorted({s.date for s in slots})
@@ -164,6 +169,7 @@ def context(request):
     user = request.user
     return dict(
         month=month,
+        company=company,
         month_value=raw,
         month_label=month_label(day),
         month_name=month_label(day).rsplit(' ', 1)[0],
@@ -230,7 +236,7 @@ def table_rows(ctx, values):
                 if s.template_id == t.pk and s.date in ctx['days']
             ],
         )
-        for t in ShiftTemplate.objects.all()
+        for t in ShiftTemplate.objects.filter(company=ctx['company'])
     ]
 
 
@@ -240,11 +246,11 @@ def dashboard(request, ctx):
     """Startseite: Planungsübersicht für den Chef, Abgabestatus für Mitarbeitende."""
     if ctx['planner']:
         ctx['plan'] = Plan.objects.filter(month=ctx['month']).first()
-        ctx['template_count'] = ShiftTemplate.objects.count()
+        ctx['template_count'] = ShiftTemplate.objects.filter(company=ctx['company']).count()
         ctx['slot_count'] = sum(s.total > 0 for s in ctx['slots'])
         ctx['deadline_form'] = DeadlineForm(initial={'deadline': ctx['month'].deadline})
         return render(request, 'planning/dashboard.html', ctx)
-    employee = get_object_or_404(Employee, user=request.user)
+    employee = get_object_or_404(Employee, user=request.user, company=ctx['company'])
     ctx['submission'] = Submission.objects.filter(employee=employee, month=ctx['month']).first()
     ctx['publication'] = PublishedPlan.objects.filter(month=ctx['month']).first()
     ctx['input_open'] = input_open(ctx['month'])
@@ -360,7 +366,7 @@ def save_demand(month, rows):
 @with_context
 def demand(request, ctx):
     """Bedarf je Tag und Schichtvorlage erfassen, optional auf den Monat kopieren (REQ-04)."""
-    quals = list(Qualification.objects.all().order_by('pk'))
+    quals = list(Qualification.objects.filter(company=ctx['company']).order_by('pk'))
     if request.method == 'POST':
         rows, errors = parse_demand(request.POST, ctx['slots'], quals)
         if errors:
@@ -450,18 +456,22 @@ def opening(request, ctx):
 def templates(request, ctx):
     """Schichtvorlagen anlegen und bearbeiten (REQ-03)."""
     selected = request.GET.get('edit') or request.POST.get('id')
-    instance = get_object_or_404(ShiftTemplate, pk=selected) if selected else None
-    form = TemplateForm(request.POST or None, instance=instance)
+    instance = (
+        get_object_or_404(ShiftTemplate, pk=selected, company=ctx['company']) if selected else None
+    )
+    form = TemplateForm(request.POST or None, instance=instance, company=ctx['company'])
     if request.method == 'POST' and form.is_valid():
         with transaction.atomic():
             form.save()
             # Geänderte Vorlagen machen bestehende Planeingaben aller Monate veraltet.
-            for month in Month.objects.select_for_update():
+            for month in Month.objects.select_for_update().filter(company=ctx['company']):
                 ensure_slots(month)
                 touch(month)
         messages.success(request, 'Schichtvorlage gespeichert.')
         return go('templates', ctx)
-    ctx.update(form=form, editing=instance, templates=ShiftTemplate.objects.all())
+    ctx.update(
+        form=form, editing=instance, templates=ShiftTemplate.objects.filter(company=ctx['company'])
+    )
     return render(request, 'planning/templates.html', ctx)
 
 
@@ -477,12 +487,13 @@ def employees(request, ctx):
         request.POST
         if request.method == 'POST' and request.POST.get('action') == 'visibility'
         else None,
-        initial={'visibility': 'team' if team_plan_visible() else 'own'},
+        initial={'visibility': 'team' if team_plan_visible(ctx['company']) else 'own'},
     )
     if request.method == 'POST' and request.POST.get('action') == 'visibility':
         if visibility_form.is_valid():
             PlanningSettings.objects.update_or_create(
-                pk=1,
+                pk=ctx['company'].pk,
+                company=ctx['company'],
                 defaults={'show_team_plan': visibility_form.cleaned_data['visibility'] == 'team'},
             )
             messages.success(
@@ -494,14 +505,16 @@ def employees(request, ctx):
     ctx['visibility_form'] = visibility_form
     selected = request.GET.get('edit') or request.POST.get('id')
     instance = (
-        get_object_or_404(Employee.objects.select_related('user'), pk=selected)
+        get_object_or_404(
+            Employee.objects.filter(company=ctx['company']).select_related('user'), pk=selected
+        )
         if selected
         else None
     )
-    form = EmployeeForm(request.POST or None, employee=instance)
+    form = EmployeeForm(request.POST or None, employee=instance, company=ctx['company'])
     if request.method == 'POST':
         if form.is_valid():
-            saved = save_employee(form.cleaned_data, instance)
+            saved = save_employee(form.cleaned_data, instance, company=ctx['company'])
             messages.success(
                 request,
                 f'{saved} gespeichert. Die Angaben gelten ab dem nächsten erzeugten Plan.',
@@ -513,7 +526,8 @@ def employees(request, ctx):
     ctx.update(
         form=form,
         editing=instance,
-        employees=Employee.objects.select_related('user')
+        employees=Employee.objects.filter(company=ctx['company'])
+        .select_related('user')
         .prefetch_related('qualifications')
         .order_by('user__last_name', 'user__first_name'),
     )
@@ -525,13 +539,22 @@ def employees(request, ctx):
 def qualifications(request, ctx):
     """Qualifikationen pflegen und Mitarbeitenden zuordnen (REQ-02 AK 3)."""
     selected = request.GET.get('edit') or request.POST.get('id')
-    instance = get_object_or_404(Qualification, pk=selected) if selected else None
-    form = QualificationForm(request.POST or None, instance=instance)
+    instance = (
+        get_object_or_404(Qualification, pk=selected, company=ctx['company']) if selected else None
+    )
+    form = QualificationForm(request.POST or None, instance=instance, company=ctx['company'])
     employees = list(
-        Employee.objects.select_related('user').prefetch_related('qualifications').order_by('pk')
+        Employee.objects.filter(company=ctx['company'])
+        .select_related('user')
+        .prefetch_related('qualifications')
+        .order_by('pk')
     )
     selected_ids = (
-        set(Employee.objects.filter(qualifications=instance).values_list('pk', flat=True))
+        set(
+            Employee.objects.filter(company=ctx['company'], qualifications=instance).values_list(
+                'pk', flat=True
+            )
+        )
         if instance
         else set()
     )
@@ -545,16 +568,16 @@ def qualifications(request, ctx):
         with transaction.atomic():
             q = form.save()
             q.employee_set.set([e for e in employees if e.pk in submitted])
-            for month in Month.objects.select_for_update():
+            for month in Month.objects.select_for_update().filter(company=ctx['company']):
                 touch(month)
         messages.success(request, 'Qualifikation und Zuordnungen gespeichert.')
         return go('qualifications', ctx)
     ctx.update(
         form=form,
         editing=instance,
-        qualifications=Qualification.objects.annotate(employee_count=Count('employee')).order_by(
-            'pk'
-        ),
+        qualifications=Qualification.objects.filter(company=ctx['company'])
+        .annotate(employee_count=Count('employee'))
+        .order_by('pk'),
         employee_choices=[(e, e.pk in selected_ids) for e in employees],
     )
     return render(request, 'planning/qualifications.html', ctx)
@@ -576,11 +599,11 @@ def next_month_start(day):
 @with_context
 def availability_overview(request, ctx):
     """Abgabestand aller Mitarbeitenden ansehen und Urlaub erfassen (REQ-14)."""
-    form = VacationForm(request.POST or None)
+    form = VacationForm(request.POST or None, company=ctx['company'])
     if request.method == 'POST' and form.is_valid():
         with transaction.atomic():
             vacation = form.save()
-            for month in Month.objects.select_for_update():
+            for month in Month.objects.select_for_update().filter(company=ctx['company']):
                 if month.date <= vacation.end and next_month_start(month.date) > vacation.start:
                     touch(month)
         messages.success(
@@ -590,7 +613,7 @@ def availability_overview(request, ctx):
     submissions = {s.employee_id: s for s in Submission.objects.filter(month=ctx['month'])}
     ctx['people'] = [
         (e, submissions.get(e.pk))
-        for e in Employee.objects.filter(user__is_active=True)
+        for e in Employee.objects.filter(company=ctx['company'], user__is_active=True)
         .select_related('user')
         .order_by('pk')
     ]
@@ -598,7 +621,9 @@ def availability_overview(request, ctx):
         slot__month=ctx['month'], priority__gt=0
     ).count()
     ctx['vacations'] = Vacation.objects.filter(
-        start__lt=ctx['month'].date + timedelta(days=31), end__gte=ctx['month'].date
+        employee__company=ctx['company'],
+        start__lt=ctx['month'].date + timedelta(days=31),
+        end__gte=ctx['month'].date,
     ).select_related('employee__user')
     ctx['vacation_form'] = form
     return render(request, 'planning/availability_overview.html', ctx)
@@ -644,11 +669,13 @@ def resolve_employee(request, ctx, employee_id):
         PermissionDenied: Wenn Mitarbeitende fremde Angaben aufrufen.
     """
     if employee_id is None:
-        return get_object_or_404(Employee, user=request.user)
+        return get_object_or_404(Employee, user=request.user, company=ctx['company'])
     own = Employee.objects.filter(pk=employee_id, user=request.user).exists()
     if not ctx['planner'] and not own:
         raise PermissionDenied
-    return get_object_or_404(Employee.objects.select_related('user'), pk=employee_id)
+    return get_object_or_404(
+        Employee.objects.filter(company=ctx['company']).select_related('user'), pk=employee_id
+    )
 
 
 @login_required
@@ -950,9 +977,9 @@ def publish(request, ctx):
 @with_context
 def employee_plan(request, ctx):
     """Zeigt ausschließlich veröffentlichte Positionen gemäß der gemeinsamen Plansicht."""
-    employee = get_object_or_404(Employee, user=request.user)
+    employee = get_object_or_404(Employee, user=request.user, company=ctx['company'])
     publication = PublishedPlan.objects.filter(month=ctx['month']).first()
-    show_team = team_plan_visible()
+    show_team = team_plan_visible(ctx['company'])
     rows = publication.assignments.all() if publication else []
     if publication and not show_team:
         rows = rows.filter(employee=employee)
