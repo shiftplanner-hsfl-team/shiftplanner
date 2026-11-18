@@ -231,3 +231,5 @@ test-artifacts/
 *.sqlite3
 *.sqlite3-journal
 .DS_Store
+/htmlcov/
+/.coverage
