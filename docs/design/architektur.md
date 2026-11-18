@@ -35,6 +35,8 @@ ungespeicherter Eingaben. Kein externer Dienst wird zur Laufzeit aufgerufen.
 
 ## Daten und Zugriffe
 
+- Company: eigener Betrieb; Stammdaten und Planungsmonate gehören genau einem Betrieb.
+- CompanyAccount: genau ein Betrieb pro Anmeldung; ohne Zuordnung kein Planungszugriff.
 - User: Django-Konto. Die Gruppe `Planung` erhält Planungszugriff.
 - Employee: Mitarbeitendenprofil mit beliebig vielen Qualifikationen, Vertragsart
   (Vollzeit, Teilzeit, Studierende, Minijob) und Wochenstunden 1–48 (REQ-02).
@@ -113,7 +115,7 @@ die Position bleibt „unbesetzt“.
 
 ## Offene technische Grenzen
 
-Ein Betrieb je Installation; kein Mandantenmodell. SQLite und der Django-
+Mehrere getrennte Betriebe je Installation; ein Betrieb pro Konto. SQLite und der Django-
 Entwicklungsserver sind für den lokalen Prototyp gewählt. Parallele Änderungen
 und Planerzeugungen sind durch Transaktionen gekapselt; ein Mehrbenutzer-
 Produktivbetrieb benötigt eine gesonderte Last-/Nebenläufigkeitsprüfung und eine
@@ -132,8 +134,19 @@ Eine signierte Prüfseite und Sperren auf Monat/Plan verhindern eine Freigabe ei
 zwischenzeitlich geänderten Stands. Offene Positionen und veraltete Eingaben erfordern
 eine ausdrückliche Bestätigung.
 
-`PlanningSettings` enthält eine gemeinsame Plansicht für alle Mitarbeitenden. Ohne
+`PlanningSettings` enthält eine gemeinsame Plansicht je Betrieb für dessen Mitarbeitende. Ohne
 Einstellung sind nur eigene veröffentlichte Schichten sichtbar. Ein Wechsel auf den
 Teamplan gilt sofort und verändert keine Eingaberevision. `/mein-schichtplan/` filtert
 serverseitig anhand dieser Einstellung und des angemeldeten Kontos; private Angaben
 und interne Entwürfe werden niemals über diese Ansicht bereitgestellt.
+
+## Getrennte Testunternehmen (ABW-03)
+
+Die Migration `0007_company_isolation` erhält vorhandene IDs und ordnet bestehende
+Konten, Monate und Stammdaten Nordlicht zu. Zuweisungen und Veröffentlichungssnapshots
+bleiben unverändert. Fremde IDs, Qualifikationen und Personen werden serverseitig
+ausgeschlossen. Neue Mitarbeitendenkonten erben das Unternehmen der Planung.
+Vorlagen- und Qualifikationsnamen sowie Monate sind innerhalb eines Betriebs eindeutig.
+
+`seed_test_companies` ergänzt drei leere Betriebe mit je einem Planungskonto.
+Die idempotente Demo-Initialisierung ersetzt weder Kennwörter noch vorhandene Inhalte.

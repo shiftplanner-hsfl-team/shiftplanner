@@ -8,11 +8,51 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 
+class Company(models.Model):
+    """Getrennter Betrieb mit eigenen Stammdaten und Planungszeiträumen."""
+
+    name = models.CharField('Unternehmen', max_length=160)
+    slug = models.SlugField(unique=True)
+    branch = models.CharField('Standort', max_length=160, blank=True)
+
+    def __str__(self):
+        return self.name
+
+
+def default_company_id():
+    """Liefert den bisherigen Demobetrieb für bestehende Daten und lokale Tests.
+
+    Returns:
+        ID des Nordlicht-Betriebs.
+    """
+    company, _ = Company.objects.get_or_create(
+        slug='nordlicht', defaults={'name': 'Nordlicht', 'branch': 'Filiale Flensburg'}
+    )
+    return company.pk
+
+
+class CompanyAccount(models.Model):
+    """Ordnet ein Anmeldungskonto genau einem Unternehmen zu."""
+
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    company = models.ForeignKey(Company, on_delete=models.PROTECT)
+
+    def __str__(self):
+        return f'{self.user}: {self.company}'
+
+
 class Qualification(models.Model):
     """Qualifikation bzw. Rolle, z. B. Kasse oder Schlüsselverantwortung (REQ-02, REQ-04)."""
 
-    name = models.CharField('Bezeichnung', max_length=80, unique=True)
+    company = models.ForeignKey(Company, on_delete=models.PROTECT, default=default_company_id)
+
+    name = models.CharField('Bezeichnung', max_length=80)
     description = models.CharField('Beschreibung', max_length=250, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['company', 'name'], name='company_qualification_name')
+        ]
 
     def __str__(self):
         return self.name
@@ -24,6 +64,8 @@ class Employee(models.Model):
     Vertragsart und Wochenstunden werden im MVP nur gespeichert; die Prüfung der
     Vertragsstunden folgt mit REQ-13 (Sprint 2).
     """
+
+    company = models.ForeignKey(Company, on_delete=models.PROTECT, default=default_company_id)
 
     FULL_TIME, PART_TIME, STUDENT, MINIJOB = 'vollzeit', 'teilzeit', 'studierende', 'minijob'
     CONTRACT_TYPES = [
@@ -51,7 +93,9 @@ class Employee(models.Model):
 class ShiftTemplate(models.Model):
     """Wiederverwendbare Schichtvorlage mit Name, Beginn und Ende am selben Tag (REQ-03)."""
 
-    name = models.CharField('Name der Vorlage', max_length=80, unique=True)
+    company = models.ForeignKey(Company, on_delete=models.PROTECT, default=default_company_id)
+
+    name = models.CharField('Name der Vorlage', max_length=80)
     start = models.TimeField('Beginn')
     end = models.TimeField('Ende')
     description = models.CharField('Beschreibung', max_length=160, blank=True)
@@ -59,9 +103,10 @@ class ShiftTemplate(models.Model):
     class Meta:
         ordering = ['start', 'pk']
         constraints = [
+            models.UniqueConstraint(fields=['company', 'name'], name='company_template_name'),
             models.CheckConstraint(
                 condition=models.Q(end__gt=models.F('start')), name='shift_positive_duration'
-            )
+            ),
         ]
 
     def __str__(self):
@@ -75,13 +120,18 @@ class Month(models.Model):
     ist er offen, danach ist die Eingabe für Mitarbeitende gesperrt (ABW-01).
     """
 
-    date = models.DateField(unique=True)
+    company = models.ForeignKey(Company, on_delete=models.PROTECT, default=default_company_id)
+
+    date = models.DateField()
     revision = models.PositiveIntegerField(default=0)
     demand_saved = models.BooleanField(default=False)
     deadline = models.DateField('Abgabefrist', null=True, blank=True)
     open_weekdays = models.CharField(
         'Geöffnete Wochentage', max_length=7, default='012345'
     )  # 0 = Montag … 6 = Sonntag (REQ-22)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['company', 'date'], name='company_month')]
 
     def __str__(self):
         return f'{self.date:%m/%Y}'
@@ -240,13 +290,10 @@ class Assignment(models.Model):
 class PlanningSettings(models.Model):
     """Gemeinsame Plansicht für Mitarbeitende des Betriebs (REQ-15)."""
 
+    company = models.OneToOneField(Company, on_delete=models.PROTECT, default=default_company_id)
+
     id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
     show_team_plan = models.BooleanField(default=False)
-
-    class Meta:
-        constraints = [
-            models.CheckConstraint(condition=models.Q(id=1), name='one_planning_settings')
-        ]
 
     def __str__(self):
         return 'Plansicht für Mitarbeitende'
