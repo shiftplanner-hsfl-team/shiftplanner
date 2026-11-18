@@ -11,6 +11,7 @@ from apps.planning.models import (
     Availability,
     Employee,
     Month,
+    Plan,
     PublishedPlan,
     Slot,
     Submission,
@@ -48,34 +49,36 @@ class Command(BaseCommand):
         if not (settings.DEBUG or getattr(settings, 'PUBLIC_DEMO', False)):
             raise CommandError('Nur im Debug- oder Demo-Modus erlaubt.')
         planner = User.objects.filter(username='nora.krueger@example.com').first()
-        november = Month.objects.filter(date=date(2026, 11, 1)).first()
+        scope = self.company_scope(planner) if planner else {}
+        november = Month.objects.filter(date=date(2026, 11, 1), **scope).first()
         if planner is None or november is None:
             raise CommandError('Bitte zuerst seed_demo ausführen.')
         self.publish_november(november, planner)
         for month_date, (deadline, tester) in TEST_MONTHS.items():
-            self.prepare_month(month_date, deadline, tester)
+            self.prepare_month(month_date, deadline, tester, scope)
 
     def publish_november(self, november, planner):
         """Erzeugt und veröffentlicht den Novemberplan, falls noch nicht veröffentlicht."""
         if PublishedPlan.objects.filter(month=november).exists():
             self.stdout.write('November: bereits veröffentlicht, unverändert.')
             return
-        Submission.objects.filter(month=november).update(submitted=True)
-        generate_plan(november, allow_incomplete=True)
+        if not Plan.objects.filter(month=november).exists():
+            generate_plan(november, allow_incomplete=True)
         preview = publication_preview(november)
         publish_plan(november, planner, preview['state'], acknowledge=True)
-        self.stdout.write('November: Plan erzeugt und veröffentlicht.')
+        self.stdout.write('November: Plan veröffentlicht; bestehende Einteilungen erhalten.')
 
-    def prepare_month(self, month_date, deadline, tester):
+    def prepare_month(self, month_date, deadline, tester, scope):
         """Legt einen Testmonat mit Frist und Abgaben aller außer der Testperson an."""
-        if Month.objects.filter(date=month_date).exists():
-            self.stdout.write(f'{month_date:%m/%Y}: existiert bereits, unverändert.')
+        month, created = Month.objects.get_or_create(date=month_date, **scope)
+        month = Month.objects.select_for_update().get(pk=month.pk)
+        if not created and not self.untouched_month(month):
+            self.stdout.write(f'{month_date:%m/%Y}: bereits benutzt oder geöffnet, unverändert.')
             return
-        month = Month.objects.create(date=month_date)
         ensure_slots(month)
         set_deadline(month, deadline)
         slots = list(Slot.objects.filter(month=month).select_related('template'))
-        employees = list(Employee.objects.select_related('user').order_by('pk'))
+        employees = list(Employee.objects.filter(**scope).select_related('user').order_by('pk'))
         for index, employee in enumerate(employees):
             is_tester = employee.user.username == f'{tester}@example.com'
             Submission.objects.create(employee=employee, month=month, submitted=not is_tester)
@@ -86,6 +89,48 @@ class Command(BaseCommand):
                 for slot in slots
             )
         self.stdout.write(f'{month_date:%m/%Y}: Frist {deadline:%d.%m.%Y}, ohne Bedarf angelegt.')
+
+    @staticmethod
+    def company_scope(planner):
+        """Begrenzt die Vorbereitung auf den Demobetrieb des Planungskontos.
+
+        Args:
+            planner: Bestehendes Demo-Planungskonto.
+
+        Returns:
+            Unternehmensfilter; vor Einführung der Betriebstrennung ein leerer Filter.
+
+        Raises:
+            CommandError: Wenn ein Konto in der getrennten Version keine Zuordnung hat.
+        """
+        if not hasattr(Month, 'company'):
+            return {}
+        account = getattr(planner, 'companyaccount', None)
+        if account is None:
+            raise CommandError('Demokonto ohne Unternehmenszuordnung; Vorbereitung abgebrochen.')
+        return {'company_id': account.company_id}
+
+    @staticmethod
+    def untouched_month(month):
+        """Erkennt einen lediglich durch die Monatsauswahl angelegten leeren Monat.
+
+        Args:
+            month: Bestehender Planungsmonat.
+
+        Returns:
+            True nur ohne Frist, Bedarf, Abgaben, Verfügbarkeiten oder Pläne.
+        """
+        if month.deadline is not None or month.demand_saved or month.revision:
+            return False
+        contents = [
+            Slot.objects.filter(month=month, total__gt=0),
+            Availability.objects.filter(slot__month=month),
+            Submission.objects.filter(month=month),
+            Plan.objects.filter(month=month),
+            PublishedPlan.objects.filter(month=month),
+            month.day_exceptions.all(),
+        ]
+        return month.open_weekdays == '012345' and not any(q.exists() for q in contents)
 
     @staticmethod
     def priority(index, slot):

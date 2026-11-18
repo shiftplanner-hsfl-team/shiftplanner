@@ -1250,3 +1250,50 @@ class UserTestSetupTests(TestCase):
         self.assertIsNone(
             plan.assignments.get(date=date(2026, 12, 18), shift_name='Spätschicht').employee
         )
+
+    def test_existing_untouched_december_is_opened(self):
+        from .services import ensure_slots
+
+        Month.objects.get(date=date(2026, 12, 1)).delete()
+        month = Month.objects.create(date=date(2026, 12, 1))
+        ensure_slots(month)
+        call_command('prepare_usertests')
+        month.refresh_from_db()
+        self.assertEqual(month.deadline, date(2026, 11, 30))
+        self.assertEqual(Submission.objects.filter(month=month, submitted=True).count(), 11)
+
+    def test_existing_input_is_never_overwritten_or_reopened(self):
+        december = Month.objects.get(date=date(2026, 12, 1))
+        december.deadline = None
+        december.save(update_fields=['deadline'])
+        before = list(Availability.objects.filter(slot__month=december).values())
+        call_command('prepare_usertests')
+        december.refresh_from_db()
+        self.assertIsNone(december.deadline)
+        self.assertEqual(list(Availability.objects.filter(slot__month=december).values()), before)
+
+    def test_existing_november_draft_is_published_without_regeneration(self):
+        from .models import PublishedPlan
+
+        november = Month.objects.get(date=date(2026, 11, 1))
+        PublishedPlan.objects.filter(month=november).delete()
+        first = Plan.objects.get(month=november).assignments.first()
+        first.employee = None
+        first.employee_name = ''
+        first.save()
+        before = list(Plan.objects.get(month=november).assignments.order_by('pk').values())
+        submissions = list(Submission.objects.filter(month=november).order_by('pk').values())
+        call_command('prepare_usertests')
+        self.assertEqual(
+            list(Plan.objects.get(month=november).assignments.order_by('pk').values()), before
+        )
+        self.assertEqual(
+            list(Submission.objects.filter(month=november).order_by('pk').values()), submissions
+        )
+
+    @override_settings(DEBUG=False, PUBLIC_DEMO=False)
+    def test_preparation_is_blocked_outside_demo_mode(self):
+        from django.core.management.base import CommandError
+
+        with self.assertRaises(CommandError):
+            call_command('prepare_usertests')
