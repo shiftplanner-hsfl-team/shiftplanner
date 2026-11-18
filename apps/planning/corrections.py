@@ -97,7 +97,7 @@ def correction_changes(by_id, assignment_id, employee_id, swap_id):
         return [(first, None)]
     employee = (
         Employee.objects.select_related('user')
-        .filter(pk=employee_id, user__is_active=True)
+        .filter(pk=employee_id, company=first.plan.month.company, user__is_active=True)
         .first()
     )
     if employee is None:

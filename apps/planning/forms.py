@@ -4,7 +4,7 @@ from django import forms
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 
-from .models import Assignment, Employee, Qualification, ShiftTemplate, Vacation
+from .models import Assignment, Company, Employee, Qualification, ShiftTemplate, Vacation
 
 
 class DeadlineForm(forms.Form):
@@ -48,7 +48,40 @@ class OpeningForm(forms.Form):
         super().__init__(*args, **kwargs)
 
 
-class TemplateForm(forms.ModelForm):
+class CompanyModelForm(forms.ModelForm):
+    """Bindet Stammdaten und eindeutige Namen an das ausführende Unternehmen."""
+
+    def __init__(self, *args, company=None, **kwargs):
+        """Initialisiert das Formular mit dem serverseitig bestimmten Unternehmen.
+
+        Args:
+            *args: Formulardaten.
+            company: Unternehmen der angemeldeten Planung.
+            **kwargs: Weitere Formularargumente.
+        """
+        super().__init__(*args, **kwargs)
+        self.company = company or Company.objects.get(slug='nordlicht')
+        self.instance.company = self.company
+
+    def clean_name(self):
+        """Prüft eindeutige Stammdatennamen innerhalb des Unternehmens.
+
+        Returns:
+            Bereinigter Name.
+
+        Raises:
+            ValidationError: Wenn der Name im Unternehmen bereits verwendet wird.
+        """
+        name = self.cleaned_data['name']
+        others = self._meta.model.objects.filter(company=self.company, name=name)
+        if self.instance.pk:
+            others = others.exclude(pk=self.instance.pk)
+        if others.exists():
+            raise forms.ValidationError('Dieser Name ist in deinem Unternehmen bereits vergeben.')
+        return name
+
+
+class TemplateForm(CompanyModelForm):
     """Schichtvorlage anlegen oder ändern (REQ-03)."""
 
     class Meta:
@@ -76,7 +109,7 @@ class TemplateForm(forms.ModelForm):
         return data
 
 
-class QualificationForm(forms.ModelForm):
+class QualificationForm(CompanyModelForm):
     """Qualifikation anlegen oder ändern (REQ-02)."""
 
     class Meta:
@@ -95,6 +128,19 @@ class VacationForm(forms.ModelForm):
             'start': forms.DateInput(attrs={'type': 'date'}),
             'end': forms.DateInput(attrs={'type': 'date'}),
         }
+
+    def __init__(self, *args, company=None, **kwargs):
+        """Begrenzt die Urlaubsauswahl auf eigene Mitarbeitende.
+
+        Args:
+            *args: Formulardaten.
+            company: Unternehmen der Planung.
+            **kwargs: Weitere Formularargumente.
+        """
+        super().__init__(*args, **kwargs)
+        self.fields['employee'].queryset = Employee.objects.filter(
+            company=company or Company.objects.get(slug='nordlicht')
+        )
 
     def clean(self):
         """Prüft, dass das Urlaubsende nicht vor dem Beginn liegt.
@@ -137,12 +183,13 @@ class EmployeeForm(forms.Form):
         label='Startpasswort', widget=forms.PasswordInput(render_value=False), required=False
     )
 
-    def __init__(self, *args, employee=None, **kwargs):
+    def __init__(self, *args, employee=None, company=None, **kwargs):
         """Initialisiert das Formular.
 
         Args:
             *args: Positionsargumente für ``forms.Form`` (z. B. POST-Daten).
             employee: Bestehende Person beim Bearbeiten, sonst ``None``.
+            company: Unternehmen der Planung.
             **kwargs: Weitere Argumente für ``forms.Form``.
         """
         self.employee = employee
@@ -156,6 +203,10 @@ class EmployeeForm(forms.Form):
                 qualifications=list(employee.qualifications.all()),
             )
         super().__init__(*args, **kwargs)
+        self.fields['qualifications'].queryset = Qualification.objects.filter(
+            company=company
+            or (employee.company if employee else Company.objects.get(slug='nordlicht'))
+        ).order_by('pk')
         if employee is None:
             self.fields['password'].required = True
 
@@ -223,7 +274,7 @@ class CorrectionForm(forms.Form):
         """
         super().__init__(*args, **kwargs)
         self.fields['employee'].queryset = (
-            Employee.objects.filter(user__is_active=True)
+            Employee.objects.filter(company=plan.month.company, user__is_active=True)
             .select_related('user')
             .order_by('user__last_name', 'user__first_name')
         )

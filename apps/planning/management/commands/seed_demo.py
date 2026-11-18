@@ -4,11 +4,13 @@ from datetime import date, time
 
 from django.conf import settings
 from django.contrib.auth.models import Group, User
+from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from apps.planning.models import (
     Availability,
+    CompanyAccount,
     Employee,
     Month,
     Need,
@@ -16,6 +18,7 @@ from apps.planning.models import (
     ShiftTemplate,
     Slot,
     Submission,
+    default_company_id,
 )
 from apps.planning.services import ensure_slots
 
@@ -42,6 +45,7 @@ class Command(BaseCommand):
         if not settings.DEBUG:
             raise CommandError('Demodaten dürfen nur mit DJANGO_DEBUG=1 angelegt werden.')
         if User.objects.exists():
+            call_command('seed_test_companies', verbosity=0)
             self.stdout.write('Bereits Benutzer vorhanden. Keine Daten geändert.')
             return
         group, _ = Group.objects.get_or_create(name='Planung')
@@ -53,6 +57,7 @@ class Command(BaseCommand):
             last_name='Krüger',
         )
         nora.groups.add(group)
+        CompanyAccount.objects.create(user=nora, company_id=default_company_id())
         sale = Qualification.objects.create(
             name='Verkauf', description='Beratung und Verkauf auf der Fläche'
         )
@@ -97,6 +102,7 @@ class Command(BaseCommand):
             user = User.objects.create_user(
                 email, email, 'ShiftDemo2026!', first_name=first, last_name=last
             )
+            CompanyAccount.objects.create(user=user, company_id=default_company_id())
             contract, hours = CONTRACTS[index % len(CONTRACTS)]
             employee = Employee.objects.create(
                 user=user, contract_type=contract, weekly_hours=hours
@@ -128,3 +134,4 @@ class Command(BaseCommand):
             'Demo-Passwort: ShiftDemo2026! | Ben und Eva haben noch nicht abgegeben. '
             'Abgabefrist: 28.10.2026.'
         )
+        call_command('seed_test_companies', verbosity=0)

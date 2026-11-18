@@ -5,14 +5,22 @@ import json
 
 from django.db import transaction
 
-from .models import Month, Plan, PlanningSettings, PublishedAssignment, PublishedPlan
+from .models import Company, Month, Plan, PlanningSettings, PublishedAssignment, PublishedPlan
 
 SNAPSHOT_FIELDS = ('employee_id', 'employee_name', 'date', 'shift_name', 'start', 'end', 'role')
 
 
-def team_plan_visible():
-    """Liefert die gemeinsame Plansicht; ohne Einstellung gelten nur eigene Schichten."""
-    return PlanningSettings.objects.filter(pk=1, show_team_plan=True).exists()
+def team_plan_visible(company=None):
+    """Liefert die Plansicht des Unternehmens; Standard sind nur eigene Schichten.
+
+    Args:
+        company: Unternehmen oder bisheriger Demobetrieb.
+
+    Returns:
+        True, wenn der Teamplan freigegeben ist.
+    """
+    company = company or Company.objects.get(slug='nordlicht')
+    return PlanningSettings.objects.filter(company=company, show_team_plan=True).exists()
 
 
 def publication_preview(month):

@@ -20,6 +20,8 @@ from . import rules
 from .models import (
     Assignment,
     Availability,
+    Company,
+    CompanyAccount,
     Employee,
     Month,
     Plan,
@@ -114,7 +116,7 @@ def ensure_slots(month):
         month: Planungsmonat.
     """
     existing = set(Slot.objects.filter(month=month).values_list('date', 'template_id'))
-    templates = list(ShiftTemplate.objects.all())
+    templates = list(ShiftTemplate.objects.filter(company=month.company))
     Slot.objects.bulk_create(
         [
             Slot(month=month, date=day, template=t)
@@ -212,7 +214,7 @@ def set_deadline(month, deadline):
 
 
 @transaction.atomic
-def save_employee(data, employee=None):
+def save_employee(data, employee=None, company=None):
     """Legt eine Person mit Konto an oder aktualisiert sie (REQ-02 AK 1, AK 3).
 
     Bestehende Pläne bleiben unverändert, weil sie Namen und Rollen als Snapshot
@@ -222,13 +224,20 @@ def save_employee(data, employee=None):
     Args:
         data: Bereinigte Daten aus ``EmployeeForm``.
         employee: Bestehende Person oder ``None`` zum Anlegen.
+        company: Unternehmen der ausführenden Planung.
 
     Returns:
         Gespeichertes ``Employee``-Objekt.
     """
+    company = company or (employee.company if employee else Company.objects.get(slug='nordlicht'))
+    if employee and employee.company_id != company.pk:
+        raise ValueError('Die Person gehört zu einem anderen Unternehmen.')
+    if any(q.company_id != company.pk for q in data['qualifications']):
+        raise ValueError('Die Qualifikation gehört zu einem anderen Unternehmen.')
     if employee is None:
         user = User.objects.create_user(data['email'], data['email'], data['password'])
-        employee = Employee(user=user)
+        employee = Employee(user=user, company=company)
+        CompanyAccount.objects.create(user=user, company=company)
     else:
         user = employee.user
         user.username = user.email = data['email']
@@ -240,7 +249,7 @@ def save_employee(data, employee=None):
     employee.weekly_hours = data['weekly_hours']
     employee.save()
     employee.qualifications.set(data['qualifications'])
-    for month in Month.objects.select_for_update():
+    for month in Month.objects.select_for_update().filter(company=company):
         touch(month)
     return employee
 
@@ -268,7 +277,7 @@ def readiness(month):
         Dictionary mit Anzahl abgegebener, aktiver und fehlender Mitarbeitender, Anzahl
         Positionen, Zeitraumstatus, ``expired`` und ``ready``.
     """
-    employees = Employee.objects.filter(user__is_active=True)
+    employees = Employee.objects.filter(company=month.company, user__is_active=True)
     submitted = Submission.objects.filter(
         month=month, submitted=True, employee__in=employees
     ).count()
@@ -499,7 +508,7 @@ def generate_plan(month, allow_incomplete=False):
     )
     employees = {
         e.pk: e
-        for e in Employee.objects.filter(user__is_active=True)
+        for e in Employee.objects.filter(company=month.company, user__is_active=True)
         .select_related('user')
         .prefetch_related('qualifications')
     }
@@ -514,7 +523,11 @@ def generate_plan(month, allow_incomplete=False):
     ):
         available[a.slot_id][a.employee_id] = a.priority
     vacations = list(
-        Vacation.objects.filter(start__lte=month.date + timedelta(days=31), end__gte=month.date)
+        Vacation.objects.filter(
+            employee__company=month.company,
+            start__lte=month.date + timedelta(days=31),
+            end__gte=month.date,
+        )
     )
     busy = defaultdict(list)
     rows = []

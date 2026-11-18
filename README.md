@@ -99,9 +99,12 @@ Unter **Mitarbeitende → Plansicht für Mitarbeitende** legt die Planung für d
 Team fest, ob nur eigene Schichten (Standard) oder der ganze Teamplan sichtbar ist.
 Die Einstellung gilt sofort; Verfügbarkeiten und Prioritäten bleiben privat.
 
+Die drei leeren Testunternehmen und ihre Zugänge sind in
+[der Testanleitung](docs/changes/2026-11-18-testunternehmen.md) beschrieben.
+
 ## Bewusste MVP-Grenzen
 
-Ein Betrieb pro Installation, standardmäßig Montag bis Samstag. Nachtvorlagen
+Getrennte Unternehmen mit jeweils eigenen Planungskonten, standardmäßig Montag bis Samstag. Nachtvorlagen
 über Mitternacht sind noch nicht unterstützt. Konten legt die Planung
 unter **Mitarbeitende** an; eine öffentliche Registrierung ist nicht enthalten.
 
@@ -145,7 +148,9 @@ diesem Prototyp.
 
 Für weitere lokale Benutzer: `python manage.py createsuperuser`, dann `/admin/`.
 Planungskonten kommen in die Gruppe **Planung**. Mitarbeitendenkonten bekommen
-zusätzlich ein **Employee**-Profil und passende Qualifikationen. Der vorhandene
+zusätzlich ein **Employee**-Profil und passende Qualifikationen. Jedes Konto benötigt
+eine **CompanyAccount**-Zuordnung; Mitarbeitendenprofil und Konto müssen demselben
+Unternehmen zugeordnet sein. Der vorhandene
 Demo-Planungszugang hat bewusst keinen Admin-Zugriff.
 
 ## Team
