@@ -217,6 +217,28 @@ class CompanyIsolationTests(TestCase):
         with self.assertRaises(ValueError):
             generate_plan(self.month, allow_incomplete=True)
 
+    def test_preparation_only_changes_nordlicht_and_preserves_empty_companies(self):
+        before = list(Month.objects.exclude(company=self.original).order_by('pk').values())
+        call_command('prepare_usertests', stdout=StringIO())
+        self.assertEqual(
+            list(Month.objects.exclude(company=self.original).order_by('pk').values()), before
+        )
+        for company in Company.objects.exclude(pk=self.original.pk):
+            self.assertFalse(Employee.objects.filter(company=company).exists())
+            self.assertFalse(ShiftTemplate.objects.filter(company=company).exists())
+        december = Month.objects.get(company=self.original, date=date(2026, 12, 1))
+        self.assertEqual(december.deadline, date(2026, 11, 30))
+
+    def test_preparation_excludes_foreign_employees(self):
+        from .models import Submission
+
+        worker = User.objects.create_user('foreign-test-worker')
+        Employee.objects.create(user=worker, company=self.company)
+        call_command('prepare_usertests', stdout=StringIO())
+        december = Month.objects.get(company=self.original, date=date(2026, 12, 1))
+        self.assertEqual(Submission.objects.filter(month=december, submitted=True).count(), 11)
+        self.assertFalse(Submission.objects.filter(employee__company=self.company).exists())
+
 
 class CompanyMigrationTests(TransactionTestCase):
     def test_existing_users_assignments_and_publications_are_preserved(self):

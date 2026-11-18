@@ -22,13 +22,22 @@ jobs:
       - run: python -m playwright install --with-deps chromium
       - run: python manage.py check
       - run: python manage.py makemigrations --check --dry-run
-      - run: python manage.py test apps.planning --verbosity 1
+      - name: Unit-, Komponenten- und Akzeptanztests mit Abdeckung (Testkonzept, Abschnitt 3)
+        run: |
+          coverage run manage.py test apps.planning tests.unit tests.acceptance --verbosity 1
+          coverage report
+          coverage html
       - run: python manage.py test tests.ui --verbosity 2
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: ui-screenshots
           path: test-artifacts/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: htmlcov/
 
   postgres:
     name: Backend mit PostgreSQL
@@ -58,4 +67,4 @@ jobs:
           python-version: "3.14"
           cache: pip
       - run: pip install -r requirements-dev.txt 'psycopg[binary]==3.3.8'
-      - run: python manage.py test apps.planning --verbosity 1
+      - run: python manage.py test apps.planning tests.unit tests.acceptance --verbosity 1

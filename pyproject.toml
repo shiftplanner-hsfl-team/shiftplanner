@@ -40,3 +40,15 @@ max-complexity = 10
 
 [tool.ruff.lint.isort]
 known-first-party = ["apps", "shiftplanner"]
+
+[tool.coverage.run]
+# Anweisungs- und Zweigabdeckung der App (Testkonzept, Abschnitte 3 und 7).
+branch = true
+source = ["apps"]
+omit = ["*/migrations/*", "*/tests.py", "*/test_*.py"]
+
+[tool.coverage.report]
+# Endekriterium: mindestens 90 % (Testkonzept, Abschnitt 7).
+fail_under = 90
+show_missing = true
+skip_covered = true
