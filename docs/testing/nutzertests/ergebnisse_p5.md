@@ -64,8 +64,4 @@ Dauer aus den eingetragenen Uhrzeiten (Ende − Beginn); SEQ = Single Ease Quest
 
 ## 6 Nachtrag M2 (Wiederholung)
 
-| Person | Konto | Belegt durch | Antwort korrekt? | Dauer | SEQ |
-|---|---|---|---|---|---|
-| NT-M1 | mia.hansen | | | | |
-| NT-M2 | tom.weber | | | | |
-| NT-M3 | lea.meyer | | | | |
+Die Wiederholung von M2 mit Screenshot als Nachweis wurde am 23.11.2026 angefragt; bis zur Präsentation P5 lagen keine Screenshots vor. **M2 bleibt für P5 nicht auswertbar.** Die Aufgabe wird im vollständigen Nutzertest zu P6 (02.12.2026) erneut durchgeführt – mit eigenem Konto je Person, ohne Beispielantworten und mit Screenshot als Beleg (Abschnitt 5).
