@@ -6,8 +6,10 @@ import json
 from django.db import transaction
 
 from .models import Company, Month, Plan, PlanningSettings, PublishedAssignment, PublishedPlan
+from .services import today
 
 SNAPSHOT_FIELDS = ('employee_id', 'employee_name', 'date', 'shift_name', 'start', 'end', 'role')
+MIN_LEAD_DAYS = 14  # REQ-15 AK 1: Hinweis bei kürzerem Vorlauf bis Planbeginn
 
 
 def team_plan_visible(company=None):
@@ -23,6 +25,18 @@ def team_plan_visible(company=None):
     return PlanningSettings.objects.filter(company=company, show_team_plan=True).exists()
 
 
+def lead_days(month):
+    """Berechnet den Vorlauf vom heutigen Tag bis zum Beginn des Planungsmonats.
+
+    Args:
+        month: Planungsmonat.
+
+    Returns:
+        Anzahl Tage bis zum Monatsersten; 0 oder negativ, wenn der Monat begonnen hat.
+    """
+    return (month.date - today()).days
+
+
 def publication_preview(month):
     """Bereitet die Freigabe des aktuellen Entwurfs vor.
 
@@ -30,7 +44,8 @@ def publication_preview(month):
         month: Planungsmonat.
 
     Returns:
-        Entwurf, Positionen, Kennzahlen und Zustand für eine signierte Bestätigung.
+        Entwurf, Positionen, Kennzahlen und Zustand für eine signierte Bestätigung sowie
+        den Vorlauf bis Planbeginn (``lead_days``, ``short_notice`` bei weniger als 14 Tagen).
 
     Raises:
         ValueError: Wenn kein Plan mit Positionen vorhanden ist.
@@ -49,6 +64,7 @@ def publication_preview(month):
     ).hexdigest()
     missing = sum(row['employee_id'] is None for row in rows)
     stale = plan.revision != month.revision
+    lead = lead_days(month)
     return {
         'draft': plan,
         'rows': rows,
@@ -57,6 +73,8 @@ def publication_preview(month):
         'unfilled_count': missing,
         'stale': stale,
         'needs_acknowledgement': bool(missing or stale),
+        'lead_days': lead,
+        'short_notice': lead < MIN_LEAD_DAYS,
         'state': {'plan': plan.pk, 'fingerprint': fingerprint, 'month_revision': month.revision},
     }
 
