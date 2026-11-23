@@ -1,6 +1,6 @@
 # Feedback-Dokumentation ShiftPlanner
 
-Stand: 09.11.2026 · Verantwortlich: Anforderungen (Muhammed Asif Shahul Hameed)
+Stand: 23.11.2026 · Verantwortlich: Anforderungen (Muhammed Asif Shahul Hameed)
 
 Dieses Dokument sammelt alle Rückmeldungen realer potenzieller Kundinnen und Kunden
 (Planer und Mitarbeitende im Einzelhandel und in der Gastronomie) und zeigt für jede
@@ -15,8 +15,9 @@ pseudonymisiert; Namen und Betriebe werden nicht genannt.
 | 1 – Erhebung | 08.–13.10.2026 | Problem, Ablauf, Anforderungen | Leitfaden mit Mehrfachauswahl als Interview oder Fragebogen | FB-01 bis FB-07 |
 | 2 – Prototyp | 26.10.2026 | erster lauffähiger Prototyp (MVP) | Fragebogen mit vier Screenshots | FB-08 bis FB-11 |
 | 3 – Sprint-1-Inkrement | 09.11.2026 | Abgabefrist, Mitarbeiteranlage, ArbZG, Feiertage/Sonntage, manuelle Korrektur | Fragebogen mit Mehrfachauswahl (Planer 8, Mitarbeitende 6 Fragen) | FB-12 bis FB-15 |
+| 4 – Aufgabenbasierter Nutzertest | 20.–23.11.2026 | vollständiger Monatsablauf in der Online-Demo (Feedback aus P4) | unmoderierter Test mit Aufgabenblatt: Zeit, Erfolg, SEQ je Aufgabe, UMUX-LITE | FB-16 bis FB-21 |
 
-In Runde 2 und 3 wurden bewusst **dieselben Personen** befragt, damit sich Aussagen über
+In Runde 2 bis 4 wurden bewusst **dieselben Personen** befragt (in Runde 4 ergänzt um einen Betrieb aus der Dienstleistung), damit sich Aussagen über
 die Zeit vergleichen lassen. Ausgewertet wird je Frage und Gruppe durch Auszählen
 (z. B. „2 von 2 Planern“). Widersprüche zwischen Personen werden vom Product Owner
 mit Begründung entschieden und hier festgehalten.
@@ -40,11 +41,17 @@ mit Begründung entschieden und hier festgehalten.
 | FB-13 | Mitarbeiter 5 (wie FB-09) | Einzelhandel, Vollzeit | Fragebogen zum Sprint-1-Inkrement | 09.11.2026 | 20 min | Anil |
 | FB-14 | Planer 2 (wie FB-02, FB-10) | Einzelhandel, 5–15 MA | Fragebogen zum Sprint-1-Inkrement | 09.11.2026 | 20 min | Asif |
 | FB-15 | Mitarbeiter 6 (wie FB-11) | Einzelhandel, Vollzeit | Fragebogen zum Sprint-1-Inkrement | 09.11.2026 | 20 min | Asif |
+| FB-16 | Planer 2 (wie FB-02, FB-10, FB-14) | Einzelhandel, 5–15 MA | Aufgabenbasierter Test (P1–P3) | 20.–23.11.2026 | 40 min | Asif |
+| FB-17 | Mitarbeiter 6 (wie FB-11, FB-15) | Einzelhandel, Vollzeit | Aufgabenbasierter Test (M1–M2) | 20.–23.11.2026 | 20 min | Asif |
+| FB-18 | Planer 1 (wie FB-01, FB-08, FB-12) | Einzelhandel, 16–30 MA | Aufgabenbasierter Test (P1–P3) | 20.–23.11.2026 | 65 min | Anil |
+| FB-19 | Mitarbeiter 5 (wie FB-09, FB-13) | Einzelhandel, Vollzeit | Aufgabenbasierter Test (M1–M2) | 20.–23.11.2026 | 15 min | Anil |
+| FB-20 | Planer 4 (neu) | Dienstleistung | Aufgabenbasierter Test (P1–P3) | 20.–23.11.2026 | 25 min | Bennet |
+| FB-21 | Mitarbeiter 4 (wie FB-07) | Dienstleistung, Werkstudent | Aufgabenbasierter Test (M1–M2) | 20.–23.11.2026 | 10 min | Bennet |
 
 **Einschränkungen:** Die Planer kommen ausschließlich aus dem Einzelhandel; die meisten
 Rückmeldungen kamen als Fragebogen. Zu den Planerfragen der Runde 1 liegen keine
 Originalnotizen vor. Runde 3 hat nur zwei Planer – bei 1 : 1-Widersprüchen entscheidet
-der Product Owner (Abschnitt 4).
+der Product Owner (Abschnitt 4). In Runde 4 waren die Antworten zur Aufgabe M2 nicht auswertbar (aus der Erinnerung statt in der App, von der Betreuung eingetragen); zwei Betriebe nutzten denselben Demomonat. Details und Konsequenzen stehen in `docs/testing/nutzertests/ergebnisse_p5.md`, Abschnitt 5.
 
 ## 3 Ergebnisse und Konsequenzen
 
@@ -99,6 +106,25 @@ der Product Owner (Abschnitt 4).
 | Lieber als bisheriges Verfahren | eher ja | ja | 2 von 2 positiv | – |
 | Weitere Wünsche | „bis jetzt gar nicht“ | „nichts“ | – | – |
 
+### Runde 4 – Aufgabenbasierter Nutzertest (FB-16 bis FB-21)
+
+Umsetzung des Feedbacks aus P4 (Prof. Petersen: Feedback künftig über Aufgaben auf der Website erheben). Drei Planungspersonen und drei Mitarbeitende lösten ohne Hilfe Aufgaben in der Online-Demo. Messwerte vollständig in `docs/testing/nutzertests/ergebnisse_p5.md`.
+
+| Aussage / Messung | FB-16 / FB-17 | FB-18 / FB-19 | FB-20 / FB-21 | Ergebnis | Konsequenz |
+|---|---|---|---|---|---|
+| Alle Aufgaben ohne Hilfe gelöst (P1–P3, M1) | ja | ja | ja | 12 von 12 | Kernabläufe validiert |
+| Monatsplanung P1–P3 (QR-06 ≤ 30 min) | 40 min | 65 min | 25 min | 1 von 3 | QR-06 nicht erfüllt → K2, Neumessung in P6 |
+| 10 Verfügbarkeiten eintragen (QR-05 ≤ 5 min) | 10 min | 5 min | 5 min | 2 von 3 | weiter beobachten (P6) |
+| „Musste erst einmal durchgucken, wo was kommt“ | Planer | Planer, Mitarbeiter | Planer | 4 von 6 | K2 „Nächste Schritte“ (#51) |
+| Wochenwechsel erfordert zusätzlich „Anzeigen“ | – | Planer | – | 1 von 6 | K1 sofortige Aktualisierung (#50) |
+| Gesamtzahl vs. Kassenqualifikation unklar | – | Planer | – | 1 von 6 | K3 Hinweis im Bedarfsformular (#52) |
+| Veröffentlichen braucht mehrere Schritte | – | Planer | – | 1 von 6 | K4 keine Änderung (E-04) |
+| Schichten in den Kalender übernehmen | – | – | Mitarbeiter | 1 von 6 | K5 REQ-26 (Could, #53) |
+| „Müsste es in der Praxis testen“ | – | – | Planer | 1 von 3 Planern | K6 Planungsdurchlauf mit realitätsnahen Daten in P6 |
+| Funktionen erfüllen Anforderungen (1–7) | 5 / 5 | 6 / 6 | 4 / 6 | Ø 5,3 | Ziel ≥ 5 erfüllt |
+| Einfach zu benutzen (1–7) | 6 / 6 | 5 / 5 | 5 / 6 | Ø 5,5 | Ziel ≥ 5 erfüllt |
+| Was fehlt für den Einsatz? | „nichts“ / „nichts“ | „nichts Wesentliches“ / „nichts“ | Praxistest / Kalender | – | K5, K6 |
+
 ## 4 Entscheidungen des Product Owners
 
 **E-01 Manuelle Korrektur bei Regelverstoß (09.11.2026, FB-12 vs. FB-14)**
@@ -119,7 +145,10 @@ verzichten. Die Rückmeldung bleibt hier dokumentiert; RB-01 bleibt unverändert
 REQ-24 „Erinnerung vor Ablauf der Abgabefrist“ (Should, Sprint 3, #33) und
 REQ-25 „Benachrichtigung bei Planänderungen“ (Could, später nach REQ-15, #34).
 
-## 5 Rückverfolgbarkeit Feedback → Anforderung → Umsetzung → Test (Sprint 1)
+**E-04 Konsequenzen aus dem Nutzertest P5 (23.11.2026, FB-16 bis FB-21)**
+K1–K3 werden vor P6 umgesetzt (#50, #51, #52), weil sie die Erstnutzung erleichtern und QR-06 verfehlt wurde. K4 (mehrstufiges Veröffentlichen) wird **nicht geändert**: Die Vorschau mit Bestätigung verhindert, dass ein unvollständiger oder veralteter Plan versehentlich an alle Mitarbeitenden geht (REQ-15); zwei von drei Planungspersonen fanden P3 unproblematisch. K5 wird als REQ-26 „Kalenderexport“ (Could, später, #53) aufgenommen. K6: In P6 durchläuft eine Planungsperson einen vollständigen Monat mit realitätsnahen Daten.
+
+## 5 Rückverfolgbarkeit Feedback → Anforderung → Umsetzung → Test
 
 | Feedback | Anforderung | Pull Request | Tests (Auswahl, `apps/planning/tests.py`) |
 |---|---|---|---|
@@ -129,6 +158,8 @@ REQ-25 „Benachrichtigung bei Planänderungen“ (Could, später nach REQ-15, #
 | FB-08, FB-10 | REQ-22 | #32 | `OpeningDayTests` (4 Tests) |
 | FB-01/02/06, FB-12/14 | REQ-11 (+ E-01) | in Arbeit | folgt mit dem PR zu #2 |
 | FB-13, FB-15 | REQ-24, REQ-25 | – | Backlog |
+| FB-16, FB-18 bis FB-20 | K1–K3 (#50–#52), QR-06 | geplant vor P6 | Neumessung TC-M-03 bis TC-M-05 in P6 |
+| FB-21 | REQ-26 (#53) | – | Backlog |
 
 Die vollständige Liste aller Anforderungen mit Quellen steht im Anforderungsdokument
 (Abschnitt 10, Rückverfolgbarkeit).
