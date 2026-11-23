@@ -6,68 +6,67 @@ skinparam componentBackgroundColor #E3F2FD
 skinparam componentBorderColor #1976D2
 skinparam componentFontColor #000000
 
-title ShiftPlanner – Komponentenübersicht (Schichtenarchitektur, Stand 23.11.2026)
+title ShiftPlanner – Komponentenübersicht (Stand 23.11.2026)
 
+actor "Browser" as browser
 package "1. Darstellung" {
-  [Templates\n(Django Templates)] as templates
-  [Static Files\n(CSS, JS)] as static
-  [Template-Filter\n(templatetags: holiday)] as tags
+  [Templates\n(templates/planning/)] as templates
+  [Static Files\n(static/planning/)] as static
+  [Template-Filter\n(templatetags/planning_extras.py)] as tags
 }
-
 package "2. Zugriff und Abläufe" {
-  [Views\n(urls.py, views.py)] as views
+  [Routen\n(shiftplanner/urls.py)] as urls
+  [Views\n(views.py)] as views
   [Forms\n(forms.py)] as forms
 }
-
-package "3. Planung" {
+package "3. Fachlogik und Regeln" {
   [Services\n(services.py)] as services
-  [Korrektur\n(corrections.py, REQ-11)] as corrections
-  [Auffüllen\n(autofill.py, REQ-09)] as autofill
-  [Veröffentlichung\n(publications.py, REQ-15)] as publications
+  [Plankorrektur\n(corrections.py)] as corrections
+  [Freie Positionen auffüllen\n(autofill.py)] as autofill
+  [Veröffentlichung und Plansicht\n(publications.py)] as publications
   [Regelmodul\n(rules.py: RB-01, RB-03)] as rules
 }
-
 package "4. Persistenz" {
-  [Models\n(models.py)] as models
-  database "SQLite (lokal, CI)\nPostgreSQL 18 (Demo, CI)" as db
+  [Models\n(models.py, Django-ORM)] as models
+  database "SQLite lokal\nPostgreSQL in Demo und CI" as db
 }
 
-templates --> views : HTTP-Anfrage / render
-templates ..> static
-templates --> tags
-tags ..> rules : holiday_name()
-views --> forms : Validierung
-views --> services : generate_plan(), readiness() u. a.
-views --> corrections : correct_plan()
-views --> autofill : fill_unassigned()
-views --> publications : publication_preview(), publish_plan()
-views ..> rules : Anzeige (Shift, Feiertage)
-views --> models : Lesen für Anzeige
-forms --> models : ModelForm / Querysets
-corrections --> rules : violations()
-corrections ..> services : overlaps()
-autofill ..> services : is_eligible(), match_positions()
-autofill ..> rules : Shift
-publications ..> services : today()
-services --> rules : is_allowed() / violations()
-services --> models : Datenzugriff (ORM)
+browser ..> urls : HTTP-Anfrage
+urls --> views
+views ..> templates : render()
+templates ..> static : CSS / JS
+templates ..> tags : Filter laden
+tags --> rules : holiday_name()
+views --> forms
+views --> services
+views --> corrections
+views --> autofill
+views --> publications
+views --> models
+views --> rules
+forms --> models
+services --> models
+services --> rules
+corrections --> services
 corrections --> models
+corrections --> rules
+autofill --> services
 autofill --> models
+autofill --> rules
 publications --> models
-models --> db
+publications --> services : Monatsdaten / Datum
+models --> db : ORM
 
 note bottom of rules
-  Ohne Datenbank- und HTTP-Zugriff.
-  Grenzwerte als Konstanten:
-  10 h/Tag, 48 h/Woche, 11 h Ruhezeit,
-  Pausen nach § 4 ArbZG.
+  Ohne Datenbank- und HTTP-Abhängigkeit.
+  Grenzwerte zentral: 10 h/Tag, 48 h/Woche,
+  11 h Ruhezeit, Pausen nach § 4 ArbZG.
 end note
 
-note right of services
-  Information Hiding: Views kennen
-  die Algorithmen nicht, nur die
-  dokumentierten Funktionen der
-  Planungsmodule.
-end note
-
+legend bottom
+  Durchgezogen: lokale Python-Modulabhängigkeit bzw. ORM-Datenzugriff.
+  Gestrichelt: HTTP-, Render- oder Ressourcenfluss.
+  Views und Forms greifen auch direkt auf Models zu.
+  Fachmodule haben keine Rückabhängigkeit auf Views oder Forms.
+endlegend
 @enduml

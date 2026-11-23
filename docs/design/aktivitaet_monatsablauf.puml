@@ -1,66 +1,120 @@
 @startuml
-!pragma layout smetana
 title Aktivitätsdiagramm: Monatsablauf (Stand 23.11.2026)
 
 |Chef / Planung|
 start
-:Betrieb einrichten
-(Vorlagen, Qualifikationen,
-Mitarbeitende anlegen);
-:Planungszeitraum öffnen
-(Abgabefrist setzen);
-:Öffnungstage festlegen
-(Sonntage optional, Feiertage markiert);
-:Bedarf und Urlaub erfassen;
-
-|Mitarbeitende|
-:Verfügbarkeiten eintragen
-(Priorität 1–3, Entwurf);
-:Angaben abgeben;
-note right: nach Fristablauf gesperrt;\nfehlende Angaben gelten\nals nicht verfügbar
-
-|Chef / Planung|
-if (Alle abgegeben?) then (ja)
-else (nein)
-  :Offene Abgaben prüfen und
-  Erzeugung ausdrücklich bestätigen
-  (vor oder nach Fristablauf);
-endif
-
+:Eigenen Betrieb einrichten
+(Vorlagen, Qualifikationen, Mitarbeitende);
+:Planungsmonat öffnen (Abgabefrist setzen),
+Öffnungstage, Bedarf und Urlaub erfassen;
 |System|
-:Plan erzeugen
-(Urlaub, Überschneidung, ArbZG prüfen);
-:Entwurf speichern
-(unbesetzt = ohne Person);
-
-|Chef / Planung|
-:Entwurf prüfen;
-repeat
-  if (Lücken vorhanden?) then (ja)
-    :Unbesetzte automatisch auffüllen
-    (nur offene Positionen);
-  else (nein)
+if (Zeitraum geöffnet und Frist noch nicht abgelaufen?) then (ja)
+  |Mitarbeitende|
+  :Eigene Verfügbarkeiten eintragen
+(Priorität 1–3 oder nicht verfügbar);
+  :Entwurf speichern;
+  if (Angaben abgeben?) then (ja)
+    :Monatsangaben abgeben;
+  else (noch nicht)
   endif
-  if (Korrektur nötig?) then (ja)
-    :Person ändern oder tauschen
-    (Vorschau mit Hinweisen);
-    if (Verstoß gegen ArbZG?) then (ja)
-      :Änderung blockiert (E-01);
+else (nein)
+  |System|
+  :Eingabe für Mitarbeitende gesperrt;
+endif
+|Chef / Planung|
+:Bedarf und Abgabestand prüfen;
+if (Bedarf gespeichert, positive Positionenzahl
+und aktive Mitarbeitende vorhanden?) then (ja)
+  if (Monatsabgaben noch offen?) then (ja)
+    :Offene Abgaben prüfen;
+    if (Trotzdem erzeugen?) then (ja)
+      :Erzeugung ausdrücklich bestätigen
+(auch vor Ablauf der Frist möglich);
     else (nein)
-      :bestätigen und speichern;
+      :Weitere Abgaben abwarten;
+      stop
     endif
   else (nein)
   endif
-repeat while (weitere Änderungen?) is (ja) not (nein)
-:Veröffentlichung prüfen
-(Vorschau: unbesetzt, veraltet,
-Hinweis bei < 14 Tagen Vorlauf);
-:Plan veröffentlichen
-(Bestätigung bei Hinweisen);
-
+else (nein)
+  :Fehlende Grundlagen ergänzen;
+  stop
+endif
+:Schichtplan erzeugen;
+|System|
+:Vorbedingungen erneut prüfen;
+:Nur abgegebene Verfügbarkeiten berücksichtigen;
+:Urlaub, Überschneidungen, Qualifikationen
+und ArbZG prüfen; Positionen zuordnen;
+:Bearbeitbaren Entwurf atomar speichern
+(vorhandene Entwurfspositionen ersetzen);
+note right
+  Offene Positionen bleiben sichtbar.
+  Eine bestehende Veröffentlichung bleibt erhalten.
+end note
+|Chef / Planung|
+:Entwurf und unbesetzte Positionen prüfen;
+if (Freie Positionen automatisch auffüllen?) then (ja)
+  |System|
+  :Passende Personen für freie Positionen suchen;
+  :Nur zulässige Ergänzungen speichern;
+  note right: Bestehende Besetzungen bleiben erhalten.
+  |Chef / Planung|
+  :Ergebnis und verbleibende Lücken prüfen;
+else (nein)
+endif
+while (Manuelle Korrektur gewünscht?) is (ja)
+  :Person zuweisen, entfernen oder Positionen tauschen;
+  :Änderung prüfen lassen;
+  |System|
+  :Konflikte und Hinweise ermitteln;
+  if (Harter Konflikt, z. B. Überschneidung oder ArbZG?) then (ja)
+    :Änderung blockieren (E-01);
+  else (nein)
+    :Signierte Vorschau und gegebenenfalls Hinweise anzeigen;
+    |Chef / Planung|
+    if (Änderung bestätigen?) then (ja)
+      |System|
+      if (Vorschau noch gültig und Planstand unverändert?) then (ja)
+        :Korrektur atomar speichern;
+      else (nein)
+        :Änderung ablehnen und erneute Prüfung verlangen;
+      endif
+    else (nein)
+    endif
+  endif
+  |Chef / Planung|
+endwhile (nein)
+:Veröffentlichungsseite öffnen;
+|System|
+:Monat, Besetzungszahlen und Planstand
+als signierte Prüfseite anzeigen;
+if (Unbesetzte Positionen oder veraltete Eingaben?) then (ja)
+  |Chef / Planung|
+  :Hinweise prüfen und ausdrücklich bestätigen;
+else (nein)
+endif
+|Chef / Planung|
+:Veröffentlichung per POST bestätigen;
+|System|
+if (Signatur gültig und Planstand unverändert?) then (ja)
+  :Veröffentlichungssnapshot atomar ersetzen
+(PublishedPlan / PublishedAssignment);
+else (nein)
+  :Veröffentlichung ablehnen;
+  :Erneute Prüfung verlangen;
+  stop
+endif
 |Mitarbeitende|
-:Eigenen Schichtplan ansehen
-(oder Teamplan, falls freigegeben);
+:Veröffentlichten Schichtplan öffnen;
+|System|
+:Nach Betrieb, Konto und Plansicht filtern;
+|Mitarbeitende|
+:Eigene Schichten oder freigegebenen Teamplan ansehen;
+note right
+  Nur veröffentlichte Daten sichtbar.
+  Spätere Entwurfsänderungen erst nach neuer Veröffentlichung.
+  Verfügbarkeiten und Prioritäten bleiben privat.
+end note
 stop
-
 @enduml

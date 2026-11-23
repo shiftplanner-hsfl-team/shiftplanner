@@ -80,17 +80,17 @@ Erfasst als Kommentare in Issue #58 (23.11.2026). Beide Einzelprüfungen waren w
 | B3 | A1, A2 | `klassen.puml`, `er_diagramm.puml` | Namen/Monat als global eindeutig statt je Betrieb | mittel | Bennet | behoben in #60 |
 | B4 | A1, A2 | beide | User–Employee als 1:1 statt 1:0..1 | mittel | Bennet | behoben in #60 |
 | B5 | A2 | `er_diagramm.puml` | M:N-Tabelle ohne `id` und Eindeutigkeitsregel | mittel | Bennet | behoben in #60 |
-| B6 | A3 | `komponenten.puml` | corrections.py, autofill.py, publications.py und Abhängigkeiten fehlen | mittel | Bennet, Asif (A-7) | behoben in #68 |
-| B7 | A4 | `sequenz_plan_erzeugen.puml` | veraltete Freigabebedingung; Bestätigung offener Abgaben (`allow_incomplete`) fehlt | hoch | Bennet | behoben in #68 |
-| B8 | A4 | `sequenz_plan_erzeugen.puml` | nur INSERT; Redirect auf „nur lesend“ statt bearbeitbaren Entwurf | mittel | Bennet | behoben in #68 |
-| A-1 | A5 | `aktivitaet_monatsablauf.puml` | Status „in Arbeit“/„Sprint 2“, „nur lesend“ veraltet | mittel | Asif | behoben in #68 |
-| A-2 | A5 | `aktivitaet_monatsablauf.puml` | Bestätigung offener Abgaben, Auffüllen, Vorschau vor Veröffentlichung fehlen | mittel | Asif | behoben in #68 |
-| A-3 | A5 | `aktivitaet_monatsablauf.puml` | Mitarbeitende sehen veröffentlichten Plan fehlt | gering | Asif | behoben in #68 |
-| A-4 | A6 | `use_case.puml` | Status veraltet | mittel | Asif | behoben in #68 |
-| A-5 | A6 | `use_case.puml` | Mitarbeitende ohne Beziehung zum veröffentlichten Plan; Planung nur über <<extend>> | mittel | Asif | behoben in #68 |
-| A-7 | A7 | `architektur.md` | Schichtentabelle ohne drei Module und Testordner | mittel | Asif | behoben in #68 |
-| A-8 | A7 | `architektur.md` | Persistenz nur SQLite | gering | Asif | behoben in #68 |
-| A-9 (= V3) | A8 | alle Diagramme | Titel „Stand Sprint 1“; PNG-Exporte | gering | Asif | Klassen/ER in #60; übrige PNGs in #68 |
+| B6 | A3 | `komponenten.puml` | corrections.py, autofill.py, publications.py und Abhängigkeiten fehlen | mittel | Bennet, Asif (A-7) | behoben in #71 |
+| B7 | A4 | `sequenz_plan_erzeugen.puml` | veraltete Freigabebedingung; Bestätigung offener Abgaben (`allow_incomplete`) fehlt | hoch | Bennet | behoben in #71 |
+| B8 | A4 | `sequenz_plan_erzeugen.puml` | nur INSERT; Redirect auf „nur lesend“ statt bearbeitbaren Entwurf | mittel | Bennet | behoben in #71 |
+| A-1 | A5 | `aktivitaet_monatsablauf.puml` | Status „in Arbeit“/„Sprint 2“, „nur lesend“ veraltet | mittel | Asif | behoben in #71 |
+| A-2 | A5 | `aktivitaet_monatsablauf.puml` | Bestätigung offener Abgaben, Auffüllen, Vorschau vor Veröffentlichung fehlen | mittel | Asif | behoben in #71 |
+| A-3 | A5 | `aktivitaet_monatsablauf.puml` | Mitarbeitende sehen veröffentlichten Plan fehlt | gering | Asif | behoben in #71 |
+| A-4 | A6 | `use_case.puml` | Status veraltet | mittel | Asif | behoben in #71 |
+| A-5 | A6 | `use_case.puml` | Mitarbeitende ohne Beziehung zum veröffentlichten Plan; Planung nur über <<extend>> | mittel | Asif | behoben in #71 |
+| A-7 | A7 | `architektur.md` | Schichtentabelle ohne drei Module und Testordner | mittel | Asif | behoben in #71 |
+| A-8 | A7 | `architektur.md` | Persistenz nur SQLite | gering | Asif | behoben in #71 |
+| A-9 (= V3) | A8 | alle Diagramme | Titel „Stand Sprint 1“; PNG-Exporte | gering | Asif | Klassen/ER in #60; übrige PNGs in #71 |
 
 A9 (Entwurfsprinzipien): ohne Befund.
 
@@ -99,11 +99,11 @@ A9 (Entwurfsprinzipien): ohne Befund.
 | Bennet Schalow | ca. 3 min werkzeuggestützt (Codex); persönliche Bestätigung im Issue | A1–A4 |
 | Muhammed Asif Shahul Hameed | 15 min (werkzeuggestützte Vorprüfung, am Diagramm bestätigt) | A5–A9 |
 
-**Kennzahlen:** 16 Befunde (3 hoch, 9 mittel, 4 gering); 5 in #60 und 11 in #68 behoben.
+**Kennzahlen:** 16 Befunde (3 hoch, 9 mittel, 4 gering); 5 in #60 und 11 in #71 behoben.
 
 ### 2.3 Entscheidung und Nachverfolgung
 
-Entscheidung der Moderation (Asif): **Nacharbeit erforderlich** (3 Befunde „hoch“). Nacharbeit durch Bennet (Vertretung Architektur) in PR #60 (Klassen-/ER-Diagramm, gemergt 23.11.2026) und PR #68 (übrige Diagramme, `architektur.md`). Abschluss der Inspektion mit dem Merge von #68; danach wird Issue #58 geschlossen.
+Entscheidung der Moderation (Asif): **Nacharbeit erforderlich** (3 Befunde „hoch“). Nacharbeit durch Bennet (Vertretung Architektur) in PR #60 (Klassen-/ER-Diagramm, gemergt 23.11.2026) und PR #71 (übrige Diagramme mit PNGs, `architektur.md`). Ein paralleler KI-Entwurf derselben Nacharbeit (#68) wurde zuerst gemergt und beim Zusammenführen vollständig durch Bennets geprüfte Fassung aus #71 ersetzt. Abschluss der Inspektion mit dem Merge von #71; danach wird Issue #58 geschlossen.
 
 **Bewertung:** Die Inspektion hat gezeigt, dass die Diagramme nach zwei größeren Features (#41, #46) nicht mitgezogen wurden, obwohl der Text in `architektur.md` bereits aktuell war. Prüfpunkt C9 der Code-Review-Prüfliste („Diagramme angepasst, wenn sich das Datenmodell ändert“) soll das künftig bereits im PR abfangen.
 

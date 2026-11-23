@@ -1,5 +1,4 @@
 @startuml
-!pragma layout smetana
 title Sequenzdiagramm: Plan erzeugen (UC-04, Stand 23.11.2026)
 
 actor "Chef / Planung" as chef
@@ -7,53 +6,73 @@ participant "Browser" as browser
 participant "Views\n(generate)" as views
 participant "Services\n(services.py)" as services
 participant "Regeln\n(rules.py)" as rules
-participant "Models" as models
-database "Datenbank\n(SQLite / PostgreSQL)" as db
+participant "Models\n(Django-ORM)" as models
+database "SQLite lokal / PostgreSQL" as db
 
-chef -> browser : Klick „Schichtplan erzeugen“\n(bei offenen Abgaben: Bestätigung anhaken)
-browser -> views : POST /plan/erzeugen/ [confirm_incomplete=yes]
-views -> views : planner_only (Rolle und Betrieb prüfen)
-
-alt keine Planungsrolle oder kein Betrieb
+chef -> browser : Eingaben prüfen, Erzeugung auslösen
+browser -> views : POST /plan/erzeugen/\nmonth, optional confirm_incomplete=yes
+views -> views : planner_only / with_context\nAnmeldung, Rolle, Betrieb und Monat prüfen
+alt nicht angemeldet
+  views --> browser : Redirect zur Anmeldung (302)
+else keine Planungsrolle oder keine Betriebszuordnung
   views --> browser : HTTP 403
-else Planungsrolle
-  views -> services : generate_plan(month, allow_incomplete)
-  services -> models : Monat sperren (select_for_update)
-  services -> services : readiness(month)
-  note right
-    can_generate = Bedarf gespeichert,
-    Positionen > 0, aktive Mitarbeitende
-    missing = offene Abgaben
+else ungültiger Planungsmonat
+  views --> browser : HTTP 400
+else gültiger Zugriff
+  note over views, services
+    with_context bestimmt den Monat im eigenen Betrieb,
+    bereitet Slots vor und liefert die Vorschau des Abgabestands.
   end note
-
-  alt nicht erzeugbar (can_generate = False)
-    services --> views : ValueError
-    views --> browser : Fehlermeldung (UC-04 1a)
-  else offene Abgaben ohne Bestätigung
-    services --> views : ValueError
-    views --> browser : „Offene Abgaben prüfen und bestätigen“
-  else erzeugbar (alle abgegeben oder bestätigt; auch vor Fristablauf)
-    services -> models : Slots der Öffnungstage (total > 0),\nnur abgegebene Verfügbarkeiten, Urlaube
-    models -> db : SELECT
-    loop je Slot, chronologisch
-      services -> services : Besetzungsmix ≤ Gesamtzahl?
-      loop je Kandidat
-        services -> services : is_eligible(shift, assigned, vacations)\nUrlaub? Überschneidung?
-        services -> rules : is_allowed(assigned, shift)
-        rules --> services : True / False (10 h/Tag, 48 h/Woche, 11 h Ruhe)
-      end
-      services -> services : match_positions()\nP1 vor P2 vor P3, deterministisch
-    end
-    services -> models : Plan anlegen oder aktualisieren (update_or_create),\nalte Entwurfspositionen löschen, neue speichern\n(unbesetzt = employee NULL)
-    models -> db : INSERT/UPDATE plan, DELETE + INSERT assignments
-    note right of models
-      Die veröffentlichte Kopie (PublishedPlan)
-      bleibt unverändert, bis erneut
-      veröffentlicht wird (REQ-15).
+  views -> services : generate_plan(month,\nallow_incomplete = confirm_incomplete == 'yes')
+  group atomare Datenbanktransaktion
+    services -> models : Monat laden (select_for_update)
+    models -> db : SELECT Monat\nZeilensperre auf PostgreSQL
+    services -> services : readiness(month)
+    note right of services
+      can_generate = Bedarf gespeichert
+      UND Positionenzahl > 0
+      UND aktive Mitarbeitende im Betrieb vorhanden.
+      Offene Abgaben brauchen ausdrückliche Bestätigung,
+      unabhängig davon, ob die Abgabefrist abgelaufen ist.
     end note
-    services --> views : Plan (duration_ms)
-    views --> browser : Redirect /plan/ (bearbeitbarer Entwurf)
+    alt can_generate ist False
+      services --> views : ValueError, Transaktion zurückrollen
+      views --> browser : Erzeugungsseite mit Fehlermeldung (200)
+    else offene Abgaben UND allow_incomplete ist False
+      services --> views : ValueError: offene Abgaben prüfen und bestätigen
+      views --> browser : Erzeugungsseite mit Fehlermeldung (200)
+    else Erzeugung zulässig
+      services -> models : Slots der Öffnungstage mit Bedarf, eigene Mitarbeitende,\nQualifikationen, abgegebene Verfügbarkeiten und Urlaube laden
+      models -> db : SELECT
+      loop je Slot, chronologisch
+        services -> services : Bedarf in qualifizierte und freie Positionen auflösen
+        opt Besetzungsmix übersteigt die Gesamtzahl
+          break Erzeugung abbrechen
+            services --> views : ValueError; gesamte Transaktion zurückrollen
+            views --> browser : Erzeugungsseite mit Fehlermeldung (200)
+          end
+        end
+        loop je verfügbarer Kandidat mit abgegebenen Angaben
+          services -> services : is_eligible(shift, assigned, vacations)\nUrlaub und Überschneidung ausschließen
+          opt kein Urlaub und keine Überschneidung
+            services -> rules : is_allowed(assigned, shift)
+            rules --> services : True / False
+          end
+        end
+        services -> services : Qualifikationen je Position filtern; match_positions()\nP1 vor P2 vor P3, deterministisch
+      end
+      services -> models : Plan anlegen oder aktualisieren;\nalte Entwurfspositionen löschen, neue Positionen speichern
+      models -> db : INSERT oder UPDATE Plan; DELETE alte Assignments;\nINSERT neue Assignments; UPDATE Laufzeit
+      note over models, db
+        Unbesetzt = employee NULL.
+        Ein vorhandener PublishedPlan mit PublishedAssignments bleibt erhalten.
+        Bei Fehlern werden sämtliche Änderungen zurückgerollt.
+      end note
+      services --> views : Plan mit duration_ms
+    end
+  end
+  opt Plan erfolgreich erzeugt
+    views --> browser : Redirect /plan/?month=...&week=... (302)\nbearbeitbarer Entwurf
   end
 end
-
 @enduml
