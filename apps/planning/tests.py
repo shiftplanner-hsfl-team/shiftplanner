@@ -1304,3 +1304,152 @@ class UserTestSetupTests(TestCase):
 
         with self.assertRaises(CommandError):
             call_command('prepare_usertests')
+
+
+@override_settings(PASSWORD_HASHERS=FAST_PASSWORDS, SHIFTPLANNER_TODAY='2026-10-20')
+class PublicationLeadTimeTests(TestCase):
+    """DEF-02 / REQ-15 AK 1 Teil 2: Hinweis bei weniger als 14 Tagen Vorlauf (Grenzwerte)."""
+
+    hint = 'weniger als 14 Tage vor Beginn'
+    setUp = PublicationTests.setUp
+    position = PublicationTests.position
+    publish = PublicationTests.publish
+
+    def preview_at(self, today):
+        with override_settings(SHIFTPLANNER_TODAY=today):
+            return self.client.get(self.publish_url)
+
+    def test_exactly_14_days_before_start_shows_no_hint(self):
+        response = self.preview_at('2026-10-18')
+        self.assertEqual(response.context['lead_days'], 14)
+        self.assertFalse(response.context['short_notice'])
+        self.assertNotContains(response, self.hint)
+
+    def test_13_days_before_start_shows_hint_and_publishing_stays_possible(self):
+        response = self.preview_at('2026-10-19')
+        self.assertEqual(response.context['lead_days'], 13)
+        self.assertContains(response, 'nur 13 Tage und damit ' + self.hint)
+        self.assertFalse(response.context['needs_acknowledgement'])
+        with override_settings(SHIFTPLANNER_TODAY='2026-10-19'):
+            self.assertEqual(self.publish(acknowledge='').status_code, 302)
+        from .models import PublishedPlan
+
+        self.assertTrue(PublishedPlan.objects.filter(month=self.month).exists())
+
+    def test_one_day_and_after_start_use_matching_wording(self):
+        self.assertContains(self.preview_at('2026-10-31'), 'nur 1 Tag und damit')
+        self.assertContains(self.preview_at('2026-11-03'), 'erst nach Beginn des Planungsmonats')
+
+
+@override_settings(PASSWORD_HASHERS=FAST_PASSWORDS, DEBUG=True, SHIFTPLANNER_TODAY=DEMO_TODAY)
+class ErrorPathTests(TestCase):
+    """Fehlerpfade und Randfälle, die bisher nicht ausgeführt wurden (Testbericht P5, N3).
+
+    Ziel: Zweigabdeckung >= 90 % (Testkonzept, Abschnitt 7). Jeder Test prüft eine
+    ungültige Eingabe oder einen Sonderfall mit eindeutigem Orakel (Äquivalenzklassen).
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from io import StringIO
+
+        call_command('seed_demo', verbosity=0, stdout=StringIO())
+        cls.month = Month.objects.get(date=date(2026, 11, 1))
+        cls.lea = Employee.objects.get(user__first_name='Lea')
+
+    def setUp(self):
+        self.client.login(username='nora.krueger@example.com', password='ShiftDemo2026!')
+
+    def messages_of(self, response):
+        return [str(m) for m in response.context['messages']]
+
+    def test_period_get_redirects_and_invalid_deadline_is_rejected(self):
+        self.assertEqual(self.client.get('/zeitraum/').status_code, 302)
+        response = self.client.post(
+            '/zeitraum/', {'month': '2026-11', 'deadline': 'kein-datum'}, follow=True
+        )
+        self.assertIn(
+            'Bitte ein gültiges Datum für die Abgabefrist eingeben.', self.messages_of(response)
+        )
+        self.month.refresh_from_db()
+        self.assertEqual(self.month.deadline, date(2026, 10, 28))
+
+    def test_demand_rejects_text_and_out_of_range_values(self):
+        slot = Slot.objects.filter(month=self.month).order_by('date', 'template__start').first()
+        url = '/bedarf/?month=2026-11&week=45'
+        for value in ('drei', '31', '-1'):
+            with self.subTest(value=value):
+                response = self.client.post(
+                    url, {'month': '2026-11', f'total_{slot.pk}': value}, follow=True
+                )
+                self.assertTrue(any('ganze Zahlen' in m for m in self.messages_of(response)))
+                slot.refresh_from_db()
+                self.assertEqual(slot.total, 3)
+
+    def test_opening_get_redirects_to_demand(self):
+        response = self.client.get('/oeffnungstage/')
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/bedarf/', response['Location'])
+
+    def test_invalid_visibility_is_rejected(self):
+        response = self.client.post(
+            '/mitarbeitende/', {'action': 'visibility', 'visibility': 'alle'}, follow=True
+        )
+        self.assertIn('Bitte eine gültige Plansicht auswählen.', self.messages_of(response))
+
+    def test_vacation_end_before_start_is_rejected(self):
+        response = self.client.post(
+            '/verfuegbarkeiten/?month=2026-11',
+            {'employee': self.lea.pk, 'start': '2026-11-10', 'end': '2026-11-09'},
+        )
+        self.assertContains(response, 'Das Urlaubsende darf nicht vor dem Beginn liegen.')
+        self.assertFalse(Vacation.objects.filter(employee=self.lea).exists())
+
+    def test_correction_with_person_and_swap_at_once_is_rejected(self):
+        Submission.objects.update(submitted=True)
+        plan = generate_plan(self.month)
+        first, second = plan.assignments.exclude(employee=None).order_by('pk')[:2]
+        response = self.client.post(
+            f'/plan/position/{first.pk}/?month=2026-11',
+            {'employee': self.lea.pk, 'swap': second.pk},
+        )
+        self.assertContains(response, 'Bitte eine Person auswählen oder zwei Positionen tauschen.')
+        first.refresh_from_db()
+        self.assertNotIn('confirmation', response.context)
+
+    def test_autofill_reports_when_everything_is_filled(self):
+        Submission.objects.update(submitted=True)
+        plan = generate_plan(self.month)
+        plan.assignments.filter(employee=None).delete()
+        response = self.client.post('/plan/unbesetzt/?month=2026-11', follow=True)
+        self.assertIn('Alle Positionen sind bereits besetzt.', self.messages_of(response))
+
+    def test_set_opening_requires_weekday_and_day_in_month(self):
+        from .services import set_opening
+
+        with self.assertRaisesMessage(ValueError, 'Mindestens ein Wochentag'):
+            set_opening(self.month, [])
+        with self.assertRaisesMessage(ValueError, 'im gewählten Planungsmonat'):
+            set_opening(self.month, [0, 1], day=date(2026, 12, 6), is_open=True)
+
+    def test_save_employee_rejects_foreign_company_data(self):
+        from .models import Company, Qualification
+        from .services import save_employee
+
+        other = Company.objects.create(name='Fremd', slug='fremd')
+        foreign = Qualification.objects.create(company=other, name='Fremde Kasse')
+        data = {'qualifications': [foreign], 'email': 'x@example.com', 'password': ''}
+        with self.assertRaisesMessage(ValueError, 'Person gehört zu einem anderen'):
+            save_employee(data, employee=self.lea, company=other)
+        with self.assertRaisesMessage(ValueError, 'Qualifikation gehört zu einem anderen'):
+            save_employee(data, employee=self.lea)
+
+    def test_generation_rejects_mix_above_total(self):
+        from .models import Need
+
+        Submission.objects.update(submitted=True)
+        need = Need.objects.filter(slot__month=self.month, count__gt=0).first()
+        Need.objects.filter(pk=need.pk).update(count=2)
+        Slot.objects.filter(pk=need.slot_id).update(total=1)
+        with self.assertRaisesMessage(ValueError, 'Besetzungsmix übersteigt'):
+            generate_plan(self.month)
