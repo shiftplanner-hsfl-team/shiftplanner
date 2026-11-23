@@ -1,5 +1,6 @@
 @startuml
-title ER-Diagramm: 13 Tabellen der App + Django-Benutzer (Krähenfußnotation, Stand Sprint 1)
+!pragma layout smetana
+title ER-Diagramm: 18 Tabellen der App + Django-Benutzer (Krähenfußnotation, Stand 23.11.2026)
 
 hide circle
 skinparam linetype ortho
@@ -13,9 +14,32 @@ entity auth_user {
   is_active : boolean
 }
 
+entity Company {
+  * id : int <<PK>>
+  --
+  name : varchar
+  slug : varchar <<unique>>
+  branch : varchar
+}
+
+entity CompanyAccount {
+  * id : int <<PK>>
+  --
+  user_id : int <<FK, unique>>
+  company_id : int <<FK>>
+}
+
+entity PlanningSettings {
+  * id : smallint <<PK>>
+  --
+  company_id : int <<FK, unique>>
+  show_team_plan : boolean
+}
+
 entity Employee {
   * id : int <<PK>>
   --
+  company_id : int <<FK>>
   user_id : int <<FK, unique>>
   contract_type : varchar
   weekly_hours : decimal(4,1) <<null>>
@@ -24,32 +48,45 @@ entity Employee {
 entity Qualification {
   * id : int <<PK>>
   --
-  name : varchar <<unique>>
+  company_id : int <<FK>>
+  name : varchar
   description : varchar
+  ..
+  unique (company_id, name)
 }
 
 entity Employee_Qualification {
-  * employee_id : int <<FK>>
-  * qualification_id : int <<FK>>
+  * id : bigint <<PK>>
+  --
+  employee_id : int <<FK>>
+  qualification_id : int <<FK>>
+  ..
+  unique (employee_id, qualification_id)
 }
 
 entity ShiftTemplate {
   * id : int <<PK>>
   --
-  name : varchar <<unique>>
+  company_id : int <<FK>>
+  name : varchar
   start : time
   end : time
   description : varchar
+  ..
+  unique (company_id, name)
 }
 
 entity Month {
   * id : int <<PK>>
   --
-  date : date <<unique>>
+  company_id : int <<FK>>
+  date : date
   revision : int
   demand_saved : boolean
   deadline : date <<null>>
   open_weekdays : varchar(7)
+  ..
+  unique (company_id, date)
 }
 
 entity MonthDay {
@@ -139,7 +176,44 @@ entity Assignment {
   unique (plan_id, slot_id, position)
 }
 
-auth_user ||--|| Employee
+entity PublishedPlan {
+  * id : int <<PK>>
+  --
+  month_id : int <<FK, unique>>
+  published_by_id : int <<FK, null>>
+  published_at : datetime
+  source_fingerprint : varchar(64)
+  source_input_revision : int
+}
+
+entity PublishedAssignment {
+  * id : int <<PK>>
+  --
+  publication_id : int <<FK>>
+  employee_id : int <<FK, null>>
+  position : int
+  employee_name : varchar
+  date : date
+  shift_name : varchar
+  start : time
+  end : time
+  role : varchar
+  ..
+  unique (publication_id, position)
+}
+
+auth_user ||--o| CompanyAccount
+Company ||--o{ CompanyAccount
+Company ||--o| PlanningSettings
+Company ||--o{ Employee
+Company ||--o{ Qualification
+Company ||--o{ ShiftTemplate
+Company ||--o{ Month
+Month ||--o| PublishedPlan
+auth_user |o--o{ PublishedPlan
+PublishedPlan ||--o{ PublishedAssignment
+Employee |o--o{ PublishedAssignment
+auth_user ||--o| Employee
 Employee ||--o{ Employee_Qualification
 Qualification ||--o{ Employee_Qualification
 Employee ||--o{ Availability
