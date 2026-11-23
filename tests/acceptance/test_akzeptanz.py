@@ -9,7 +9,6 @@ Testdaten: Demobetrieb aus ``seed_demo`` (Planerin Nora Krüger, 12 Mitarbeitend
 2026, Frist 28.10.2026, Ben und Eva haben noch nicht abgegeben), festes Datum 20.10.2026.
 """
 
-import unittest
 from datetime import date, time
 from io import StringIO
 from statistics import mean
@@ -621,14 +620,11 @@ class Req15PublicationTests(AcceptanceBase):
         self.assertContains(page, own.shift_name)
         self.assertNotContains(page, 'Ben Fischer')
 
-    @unittest.expectedFailure
     def test_tc_a_15_1b_planner_gets_hint_when_publishing_less_than_14_days_before_start(self):
         """REQ-15 AK 1 (Teil 2): Liegt die Veröffentlichung weniger als 14 Tage vor Planbeginn,
         erhält der Chef einen Hinweis. Datum 20.10.2026, Planbeginn 01.11.2026 → 12 Tage.
 
-        BEKANNTER FEHLER (Testbericht P5, DEF-02): Der Hinweis ist nicht umgesetzt. Der Test ist
-        als ``expectedFailure`` markiert, damit CI grün bleibt; nach der Korrektur meldet er
-        „unexpected success“ und die Markierung muss entfernt werden.
+        Behoben mit DEF-02 (zuvor als ``expectedFailure`` markiert).
         """
         nora = self.planner()
         self.submit_all()
