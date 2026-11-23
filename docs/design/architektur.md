@@ -29,9 +29,12 @@ ungespeicherter Eingaben. Kein externer Dienst wird zur Laufzeit aufgerufen.
 | Darstellung | `templates/planning/`, `static/planning/` | Desktop/Mobil, Formulare, Feedback |
 | Zugriff und Abläufe | `views.py`, `forms.py` | Anmeldung, Rollen, Validierung, Transaktionen |
 | Planung | `services.py` | Monatsaufbau, Öffnungstage, Abgabefrist, Vorbedingungen, deterministische Zuordnung, Mitarbeiteranlage |
+| Planung | `corrections.py` | Manuelle Korrektur mit Vorschau, harte Blockade bei ArbZG-Verstoß, weiche Hinweise (REQ-11, E-01) |
+| Planung | `autofill.py` | Unbesetzte Positionen nachträglich auffüllen, bestehende Zuordnungen bleiben (REQ-09) |
+| Planung | `publications.py` | Vorschau, Veröffentlichung als unabhängige Kopie, Plansicht, Hinweis bei < 14 Tagen Vorlauf (REQ-15) |
 | Regeln | `rules.py` | Arbeitszeitgesetz (RB-01), Feiertage Schleswig-Holstein (RB-03); ohne Datenbankzugriff |
-| Persistenz | `models.py`, `migrations/` | SQLite, Beziehungen, Constraints, Plansnapshot |
-| Qualität | `tests.py`, `tests/ui/` | Logik, HTTP-Zugriffe, Browserabläufe |
+| Persistenz | `models.py`, `migrations/` | SQLite lokal, PostgreSQL 18 in der Online-Demo (beide in CI geprüft); Beziehungen, Constraints, Plansnapshot, Betriebstrennung |
+| Qualität | `tests.py`, `test_companies.py`, `tests/unit/`, `tests/acceptance/`, `tests/ui/` | Unit-, Komponenten-, Akzeptanz- und Browsertests (siehe `docs/testing/testfaelle.md`) |
 
 ## Daten und Zugriffe
 

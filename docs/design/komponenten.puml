@@ -1,11 +1,12 @@
 @startuml
+!pragma layout smetana
 skinparam componentStyle rectangle
 skinparam backgroundColor #FEFEFE
 skinparam componentBackgroundColor #E3F2FD
 skinparam componentBorderColor #1976D2
 skinparam componentFontColor #000000
 
-title ShiftPlanner – Komponentenübersicht (Schichtenarchitektur, Stand Sprint 1)
+title ShiftPlanner – Komponentenübersicht (Schichtenarchitektur, Stand 23.11.2026)
 
 package "1. Darstellung" {
   [Templates\n(Django Templates)] as templates
@@ -20,12 +21,15 @@ package "2. Zugriff und Abläufe" {
 
 package "3. Planung" {
   [Services\n(services.py)] as services
+  [Korrektur\n(corrections.py, REQ-11)] as corrections
+  [Auffüllen\n(autofill.py, REQ-09)] as autofill
+  [Veröffentlichung\n(publications.py, REQ-15)] as publications
   [Regelmodul\n(rules.py: RB-01, RB-03)] as rules
 }
 
 package "4. Persistenz" {
   [Models\n(models.py)] as models
-  database "SQLite" as db
+  database "SQLite (lokal, CI)\nPostgreSQL 18 (Demo, CI)" as db
 }
 
 templates --> views : HTTP-Anfrage / render
@@ -33,9 +37,23 @@ templates ..> static
 templates --> tags
 tags ..> rules : holiday_name()
 views --> forms : Validierung
-views --> services : Aufruf
+views --> services : generate_plan(), readiness() u. a.
+views --> corrections : correct_plan()
+views --> autofill : fill_unassigned()
+views --> publications : publication_preview(), publish_plan()
+views ..> rules : Anzeige (Shift, Feiertage)
+views --> models : Lesen für Anzeige
+forms --> models : ModelForm / Querysets
+corrections --> rules : violations()
+corrections ..> services : overlaps()
+autofill ..> services : is_eligible(), match_positions()
+autofill ..> rules : Shift
+publications ..> services : today()
 services --> rules : is_allowed() / violations()
 services --> models : Datenzugriff (ORM)
+corrections --> models
+autofill --> models
+publications --> models
 models --> db
 
 note bottom of rules
@@ -47,8 +65,9 @@ end note
 
 note right of services
   Information Hiding: Views kennen
-  den Algorithmus nicht, nur
-  generate_plan(), readiness() u. a.
+  die Algorithmen nicht, nur die
+  dokumentierten Funktionen der
+  Planungsmodule.
 end note
 
 @enduml
