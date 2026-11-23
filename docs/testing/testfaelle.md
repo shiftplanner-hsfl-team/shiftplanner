@@ -1,6 +1,6 @@
 # Testfallkatalog ShiftPlanner
 
-Verantwortlich: Anil Duth (Qualitätssicherung) · Stand: 18.11.2026 · Version 1.0 · Grundlage: `testkonzept.md`
+Verantwortlich: Anil Duth (Qualitätssicherung); ab 23.11.2026 vertretungsweise Muhammed Asif Shahul Hameed · Stand: 23.11.2026 · Version 1.1 (ergänzt um PR #45 und #46) · Grundlage: `testkonzept.md`
 
 Dieser Katalog beschreibt jeden Testfall so, dass Außenstehende ihn ohne Blick in den Code verstehen und wiederholen können: geprüfte Anforderung, Eingabe, erwartetes Ergebnis (Testorakel) und das Verfahren, mit dem er abgeleitet wurde. Die Vorbedingungen und Testdaten sind je Gruppe einmal angegeben, weil alle Testfälle einer Gruppe denselben Ausgangszustand verwenden. Die Ergebnisse der einzelnen Läufe (bestanden/fehlgeschlagen, Datum, CI-Lauf) stehen nicht hier, sondern im jeweiligen Testbericht (`teststand_*.md`), der über die Testfall-ID auf diesen Katalog verweist.
 
@@ -15,18 +15,18 @@ Dieser Katalog beschreibt jeden Testfall so, dass Außenstehende ihn ohne Blick 
 | Stufe | Automatisiert | Geplant bis P6 | Ort |
 |---|---|---|---|
 | Unit (TC-U) | 20 | – | `apps/planning/tests.py` (6), `tests/unit/` (14) |
-| Komponente (TC-K) | 79 | – | `apps/planning/tests.py` |
+| Komponente (TC-K) | 100 | – | `apps/planning/tests.py` (86), `apps/planning/test_companies.py` (14) |
 | Akzeptanz automatisiert (TC-A) | 43 | – | `tests/acceptance/test_akzeptanz.py` |
-| Oberfläche (TC-UI) | 8 | – | `tests/ui/test_browser.py` |
+| Oberfläche (TC-UI) | 10 | – | `tests/ui/test_browser.py` |
 | Akzeptanz mit Nutzenden (TC-M) | – | 5 Aufgaben × 4 Personen | `docs/testing/nutzertests/` |
-| **Summe automatisiert** | **150** | | |
+| **Summe automatisiert** | **173** | | |
 
 ## Rückverfolgbarkeit Anforderung → Testfälle
 
 | Anforderung | Testfälle |
 |---|---|
 | REQ-01 Anmeldung mit Rollen | TC-K-01, TC-K-02, TC-UI-07, TC-A-01-1 bis -3 |
-| REQ-02 Mitarbeitende anlegen (ABW-02) | TC-K-27 bis TC-K-31, TC-A-02-1 bis -3 |
+| REQ-02 Mitarbeitende anlegen (ABW-02), Betriebstrennung (ABW-03) | TC-K-27 bis TC-K-31, TC-K-87 bis TC-K-100, TC-UI-09, TC-A-02-1 bis -3 |
 | REQ-03 Schichtvorlagen | TC-K-17, TC-UI-01, TC-A-03-1 bis -3 |
 | REQ-04 Bedarf, Besetzungsmix | TC-K-08, TC-K-09, TC-UI-01, TC-A-04-1 bis -3 |
 | REQ-05 Planungszeitraum mit Frist (ABW-01) | TC-K-19 bis TC-K-26, TC-A-05-1 bis -4 |
@@ -41,9 +41,9 @@ Dieser Katalog beschreibt jeden Testfall so, dass Außenstehende ihn ohne Blick 
 | REQ-22 Öffnungstage | TC-K-43 bis TC-K-46, TC-A-22-1 |
 | QR-01 Laufzeit ≤ 10 s | TC-K-38, TC-A-QR01-1 |
 | QR-02 Mobil ab 360 px | TC-UI-02, TC-UI-06, TC-UI-07 |
-| QR-03 Zugriffsschutz 403 | TC-K-03, TC-K-04, TC-K-05, TC-K-21, TC-K-31, TC-K-46, TC-K-53, TC-K-61, TC-K-66, TC-K-67, TC-UI-08, TC-A-QR03-1, -3 |
+| QR-03 Zugriffsschutz 403 (inkl. AK 2 fremder Betrieb) | TC-K-88 bis TC-K-91, TC-K-94, TC-K-96, TC-UI-09, TC-K-03, TC-K-04, TC-K-05, TC-K-21, TC-K-31, TC-K-46, TC-K-53, TC-K-61, TC-K-66, TC-K-67, TC-UI-08, TC-A-QR03-1, -3 |
 | QR-04 Keine Pflichtgründe | TC-A-QR04-1, -2; Inspektion Datenmodell |
-| QR-05, QR-06 Bearbeitungszeiten | TC-M-01 bis TC-M-05 |
+| QR-05, QR-06 Bearbeitungszeiten | TC-M-01 bis TC-M-05, TC-UI-10 (10 Eingaben möglich) |
 | QR-07 UI-Tests in CI | TC-UI-01 bis TC-UI-08 |
 | RB-01 ArbZG | TC-U-01 bis TC-U-04, TC-U-07 bis TC-U-12, TC-K-39 bis TC-K-41, TC-K-50, TC-K-56 |
 | RB-03 Feiertage SH | TC-U-05, TC-U-14, TC-U-15, TC-U-20, TC-K-42 |
@@ -224,13 +224,48 @@ Dieser Katalog beschreibt jeden Testfall so, dass Außenstehende ihn ohne Blick 
 | TC-K-79 | Ansicht nutzt Veröffentlichung, Jahreswechsel korrekt | REQ-15 | Entwurf nach Veröffentlichung ändern; Woche 28.12.2026 im Januar 2027 | Entwurfsänderung nicht sichtbar; KW 53; nächste Woche 4.1.2027; Tage außerhalb des Monats markiert | GW | `test_timetable_uses_publication_and_handles_year_boundary` |
 
 
+### 2.9 Vorbereitung der Tests mit Nutzenden (`UserTestSetupTests`, PR #45)
+
+**Vorbedingung:** Demobetrieb aus `seed_demo`, danach `prepare_usertests`; Datum 20.11.2026, Debug-Modus.
+
+| ID | Testfall | Anf. | Eingabe / Schritte | Erwartetes Ergebnis (Orakel) | Verf. | Umsetzung |
+|---|---|---|---|---|---|---|
+| TC-K-80 | November veröffentlicht, Testmonate offen und ohne Bedarf | Testplan TC-M | Kommando ausführen | Novemberplan veröffentlicht; Dezember Frist 30.11., Januar Frist 15.12.; alle Slots Bedarf 0; Mia bzw. Tom nicht abgegeben; je 11 Abgaben | AB | `test_november_published_and_test_months_open_without_demand` |
+| TC-K-81 | Erneuter Lauf verändert laufende Tests nicht | Testplan TC-M | Dezember-Bedarf auf 2 setzen, Kommando erneut | Bedarf bleibt 2 | ZB | `test_rerun_does_not_change_running_tests` |
+| TC-K-82 | Lückenschicht bleibt unbesetzt | REQ-09 | Bedarf 1 je Slot, Plan erzeugen | Spätschicht 18.12. ohne Person | ÄK | `test_gap_shift_stays_unfilled` |
+| TC-K-83 | Bereits angelegter, unbenutzter Dezember wird geöffnet | Testplan TC-M | Dezember leer neu anlegen, Kommando | Frist 30.11.; 11 Abgaben | ZB | `test_existing_untouched_december_is_opened` |
+| TC-K-84 | Bestehende Eingaben werden nie überschrieben oder neu geöffnet | Testplan TC-M | Dezember ohne Frist mit Verfügbarkeiten, Kommando | Frist bleibt leer; Verfügbarkeiten unverändert | ZB | `test_existing_input_is_never_overwritten_or_reopened` |
+| TC-K-85 | Vorhandener Novemberentwurf wird ohne Neuerzeugung veröffentlicht | REQ-15 | Veröffentlichung löschen, Entwurf ändern, Kommando | veröffentlichte Positionen = geänderter Entwurf; Abgaben unverändert | ZB | `test_existing_november_draft_is_published_without_regeneration` |
+| TC-K-86 | Kommando außerhalb des Demo-Modus gesperrt | RB-02 | Debug und Demo aus | `CommandError` | SI | `test_preparation_is_blocked_outside_demo_mode` |
+
+### 2.10 Betriebstrennung (`CompanyIsolationTests`, `CompanyMigrationTests`, PR #46)
+
+**Vorbedingung:** `seed_demo` mit Demobetrieb „Nordlicht“ und drei leeren Testunternehmen; angemeldet als `planer1@example.com` (Testunternehmen 1); ein Plan mit Position von Lea Meyer im Betrieb Nordlicht.
+
+| ID | Testfall | Anf. | Eingabe / Schritte | Erwartetes Ergebnis (Orakel) | Verf. | Umsetzung |
+|---|---|---|---|---|---|---|
+| TC-K-87 | Drei leere Testunternehmen; erneutes Seeding erhält Daten | REQ-02 (ABW-03) | `seed_test_companies` nach Passwortänderung erneut | 4 Betriebe, 12 Personen in Nordlicht, 16 Konten; geändertes Passwort und Plan unverändert; neue Betriebe ohne Stammdaten | ÄK | `test_three_companies_are_empty_and_seed_preserves_existing_data` |
+| TC-K-88 | Alle Seiten zeigen nur den eigenen Betrieb | QR-03 AK 2 | 8 Planungsseiten aufrufen | „Testunternehmen 1“ sichtbar, weder „Lea Meyer“ noch „Filiale Flensburg“; Erzeugen ohne Personen nicht möglich | SI | `test_views_only_show_own_company` |
+| TC-K-89 | Fremde Objekt-IDs per GET und POST abgelehnt | QR-03 AK 2 | Vorlage, Qualifikation, Person, Verfügbarkeit, Planposition des anderen Betriebs | jeweils HTTP 404 | SI | `test_foreign_ids_are_rejected_for_get_and_post` |
+| TC-K-90 | Fremde Person/Qualifikation in Formularen abgelehnt | QR-03 AK 2 | Urlaub für Lea; neue Person mit fremder Qualifikation | Formular mit Fehler (200); nichts gespeichert | SI | `test_foreign_vacation_and_qualification_cannot_be_submitted` |
+| TC-K-91 | Gleiche Namen zwischen Betrieben erlaubt, im Betrieb eindeutig | REQ-03, REQ-02 | Vorlage/Qualifikation mit Namen aus Nordlicht zweimal anlegen | erstes Mal 302, zweites Mal 200; je 1 Eintrag; Nordlicht unverändert | GW | `test_same_names_are_allowed_between_companies_and_rejected_inside_one` |
+| TC-K-92 | Neue Person gehört zum Betrieb der Planung | REQ-02 | Person anlegen und mit ihr anmelden | Betrieb = Testunternehmen 1; Verwaltung und fremde Verfügbarkeit 403 | SI | `test_new_employee_can_login_only_in_own_company` |
+| TC-K-93 | Plansicht je Betrieb | REQ-15 | Sichtbarkeit „team“ setzen | gilt nur für Testunternehmen 1 | ÄK | `test_visibility_is_per_company` |
+| TC-K-94 | Konto ohne Betrieb hat keinen Zugriff | QR-03 | Konto in Gruppe „Planung“ ohne Zuordnung | GET und POST 403 | SI | `test_account_without_company_is_denied_even_with_planner_group` |
+| TC-K-95 | Korrektur mit Person eines anderen Betriebs abgelehnt | REQ-11, QR-03 | `correct_plan` mit fremder Person | `ValueError` | SI | `test_cross_company_assignment_is_rejected_in_service` |
+| TC-K-96 | Fremde Veröffentlichung unsichtbar | QR-03 AK 2, REQ-15 | Nordlicht veröffentlicht; Person aus Testunternehmen 1 ruft eigenen Plan auf | „noch kein Plan veröffentlicht“, kein „Lea Meyer“ | SI | `test_employee_cannot_see_another_company_publication` |
+| TC-K-97 | Planerzeugung berücksichtigt keine fremden Personen | REQ-08 | leerer Betrieb mit Slot und Bedarf | nicht erzeugbar; `ValueError` | ET | `test_empty_company_does_not_consider_foreign_employees_for_generation` |
+| TC-K-98 | Vorbereitung ändert nur Nordlicht | Testplan TC-M | `prepare_usertests` | andere Betriebe unverändert und leer; Dezember Nordlicht Frist 30.11. | SI | `test_preparation_only_changes_nordlicht_and_preserves_empty_companies` |
+| TC-K-99 | Vorbereitung schließt fremde Personen aus | Testplan TC-M | Person in Testunternehmen 1, dann `prepare_usertests` | 11 Abgaben in Nordlicht; keine Abgabe für fremde Person | SI | `test_preparation_excludes_foreign_employees` |
+| TC-K-100 | Migration erhält bestehende Daten | REQ-02 (ABW-03) | Daten im Schema vor `0007`, dann Migration | Monat und Konto Nordlicht zugeordnet; Plan-Revision, Veröffentlichung und Snapshot-Namen unverändert; Teamansicht erhalten | ZB | `CompanyMigrationTests.test_existing_users_assignments_and_publications_are_preserved` |
+
 ---
 
 ## 3 Automatisierte Akzeptanztests (TC-A, `tests/acceptance/test_akzeptanz.py`)
 
 **Vorbedingung:** Demobetrieb aus `seed_demo` (wie 2.1); festes Datum 20.10.2026 (Eingabephase) bzw. 29.10.2026 (nach der Frist) je Testklasse. Jeder Test bildet genau ein Akzeptanzkriterium aus dem Anforderungsdokument (Stand P4, 09.11.2026) ab; Gegeben/Wenn/Dann steht im Docstring, der Name lautet `test_tc_a_<REQ>_<AK>_…`. Die Tests bedienen das System über HTTP wie Nutzende; Datenbankzugriffe dienen nur dem Herstellen des Ausgangszustands und dem Prüfen. Das Orakel ist jeweils der „Dann“-Teil des Akzeptanzkriteriums.
 
-Abgedeckt sind alle 37 Akzeptanzkriterien der umgesetzten Anforderungen REQ-01 bis REQ-11, REQ-14, REQ-15 und REQ-22 sowie die automatisiert prüfbaren Kriterien QR-01 AK 1, QR-03 AK 1 und 3 und QR-04 AK 1 und 2. Nicht automatisiert sind QR-02 (Oberflächentests TC-UI), QR-03 AK 2 (Abweichung ABW-03, nur ein Betrieb je Installation), QR-05/QR-06 (Tests mit Nutzenden TC-M) und QR-07 (durch die CI-Pipeline selbst nachgewiesen).
+Abgedeckt sind alle 37 Akzeptanzkriterien der umgesetzten Anforderungen REQ-01 bis REQ-11, REQ-14, REQ-15 und REQ-22 sowie die automatisiert prüfbaren Kriterien QR-01 AK 1, QR-03 AK 1 und 3 und QR-04 AK 1 und 2. Nicht automatisiert sind QR-02 (Oberflächentests TC-UI), QR-05/QR-06 (Tests mit Nutzenden TC-M) und QR-07 (durch die CI-Pipeline selbst nachgewiesen). QR-03 AK 2 (keine Daten fremder Betriebe) ist seit PR #46 auf Komponentenebene geprüft (TC-K-87 bis TC-K-100).
 
 | ID | Kriterium | Gegeben | Wenn | Dann (Orakel) | Umsetzung |
 |---|---|---|---|---|---|
@@ -284,7 +319,7 @@ Abgedeckt sind alle 37 Akzeptanzkriterien der umgesetzten Anforderungen REQ-01 b
 
 ## 4 Oberflächentests im Browser (TC-UI)
 
-**Vorbedingung:** Demobetrieb aus `seed_demo` auf einem Django-Testserver; Chromium über Playwright; Fenster 1440 × 1000 px, mobil 360 × 900 px; Datum 20.10.2026. Für TC-UI-03, -05 und -06 sind alle Abgaben gesetzt und ein Plan erzeugt. Screenshots liegen im CI-Artefakt `ui-screenshots`.
+**Vorbedingung:** Demobetrieb aus `seed_demo` (TC-UI-09 mit Testunternehmen, TC-UI-10 zusätzlich `prepare_usertests`) auf einem Django-Testserver; Chromium über Playwright; Fenster 1440 × 1000 px, mobil 360 × 900 px; Datum 20.10.2026. Für TC-UI-03, -05 und -06 sind alle Abgaben gesetzt und ein Plan erzeugt. Screenshots liegen im CI-Artefakt `ui-screenshots`.
 
 | ID | Testfall | Anf. | Schritte | Erwartetes Ergebnis (Orakel) | Verf. | Umsetzung |
 |---|---|---|---|---|---|---|
@@ -296,6 +331,8 @@ Abgedeckt sind alle 37 Akzeptanzkriterien der umgesetzten Anforderungen REQ-01 b
 | TC-UI-06 | Veröffentlichen und Sichtbarkeit umschalten | REQ-15, QR-02, RB-02 | Nora veröffentlicht; Lea mobil: eigene Schichten, Wochen blättern; Nora stellt „team“ ein; Lea erneut | „für Mitarbeitende veröffentlicht“; Lea sieht „Meine Schichten“, nicht „Ben Fischer“, KW 46/45 navigierbar, kein Überlauf; nach Umstellung „Schichtplan des Teams“ mit „Unbesetzt“ | AB | `test_publish_plan_and_switch_employee_visibility` |
 | TC-UI-07 | Anmeldung per Tastatur und mobile Verfügbarkeit | REQ-01, QR-02 | 360 px: E-Mail, Tab, Passwort, Enter; Verfügbarkeiten öffnen, „Weitere Tage“ | Anmeldung erfolgreich; kein Überlauf; 4 Tageskarten, danach 6 | AB | `test_mobile_360_and_keyboard_login` |
 | TC-UI-08 | Fremde und Planungsdaten liefern 403 | QR-03, RB-02 | Lea ruft `/bedarf/` und Bens Verfügbarkeiten auf | HTTP 403, Überschrift „Kein Zugriff“, „Ben Fischer“ nicht sichtbar | SI | `test_employee_privacy_returns_403` |
+| TC-UI-09 | Leeres Testunternehmen isoliert | REQ-02 (ABW-03), QR-03 AK 2, QR-02 | planer1 meldet sich an, öffnet Mitarbeitende, legt Vorlage an; Nora und planer2 prüfen ihre Vorlagen | „TESTUNTERNEHMEN 1“; kein „Lea Meyer“; neue Vorlage nur in Testunternehmen 1 sichtbar; kein Überlauf | SI | `test_empty_company_login_and_setup_are_isolated` |
+| TC-UI-10 | Vorbereitete Folgemonate erlauben 10 Eingaben | REQ-06, REQ-07, QR-05 | Testperson öffnet Dezember bzw. Januar, füllt ≥ 10 Felder, speichert Entwurf, gibt ab | Felder aktiv; „Entwurf gespeichert“; „Alles abgegeben“; kein Überlauf | AB | `test_prepared_future_months_allow_ten_availability_entries` |
 
 ---
 
