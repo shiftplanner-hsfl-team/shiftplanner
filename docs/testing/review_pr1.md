@@ -1,5 +1,7 @@
 # Review PR #1 – Erster ShiftPlanner-Prototyp
 
+> **Hinweis (23.11.2026):** Diese Vorlage aus P3 wurde nie ausgefüllt; die Reviews erfolgten direkt in GitHub. Sie bleibt als Nachweis erhalten und ist durch `review_richtlinie.md` und `review_ergebnisse_p5.md` (Abschnitt 1.4) ersetzt.
+
 **Reviewer:** Anil Duth (QS), Mahdi Fazeli (Architektur)
 **Datum:** __.__.2026
 **Gegenstand:** PR #1 „REQ-08: Erster funktionierender ShiftPlanner-Prototyp“ (Branch `feature/REQ-08-erster-prototyp`)
