@@ -1,6 +1,6 @@
 # Testfallkatalog ShiftPlanner
 
-Verantwortlich: Anil Duth (Qualitätssicherung); ab 23.11.2026 vertretungsweise Muhammed Asif Shahul Hameed · Stand: 23.11.2026 · Version 1.1 (ergänzt um PR #45 und #46) · Grundlage: `testkonzept.md`
+Verantwortlich: Anil Duth (Qualitätssicherung); ab 23.11.2026 vertretungsweise Muhammed Asif Shahul Hameed · Stand: 23.11.2026 · Version 1.2 (ergänzt um PR #45, #46 und #66) · Grundlage: `testkonzept.md`
 
 Dieser Katalog beschreibt jeden Testfall so, dass Außenstehende ihn ohne Blick in den Code verstehen und wiederholen können: geprüfte Anforderung, Eingabe, erwartetes Ergebnis (Testorakel) und das Verfahren, mit dem er abgeleitet wurde. Die Vorbedingungen und Testdaten sind je Gruppe einmal angegeben, weil alle Testfälle einer Gruppe denselben Ausgangszustand verwenden. Die Ergebnisse der einzelnen Läufe (bestanden/fehlgeschlagen, Datum, CI-Lauf) stehen nicht hier, sondern im jeweiligen Testbericht (`teststand_*.md`), der über die Testfall-ID auf diesen Katalog verweist.
 
@@ -15,11 +15,11 @@ Dieser Katalog beschreibt jeden Testfall so, dass Außenstehende ihn ohne Blick 
 | Stufe | Automatisiert | Geplant bis P6 | Ort |
 |---|---|---|---|
 | Unit (TC-U) | 20 | – | `apps/planning/tests.py` (6), `tests/unit/` (14) |
-| Komponente (TC-K) | 100 | – | `apps/planning/tests.py` (86), `apps/planning/test_companies.py` (14) |
-| Akzeptanz automatisiert (TC-A) | 43 | – | `tests/acceptance/test_akzeptanz.py` |
+| Komponente (TC-K) | 113 | – | `apps/planning/tests.py` (99), `apps/planning/test_companies.py` (14) |
+| Akzeptanz automatisiert (TC-A) | 43 | – | `tests/acceptance/test_akzeptanz.py` (alle bestanden) |
 | Oberfläche (TC-UI) | 10 | – | `tests/ui/test_browser.py` |
 | Akzeptanz mit Nutzenden (TC-M) | – | 5 Aufgaben × 4 Personen | `docs/testing/nutzertests/` |
-| **Summe automatisiert** | **173** | | |
+| **Summe automatisiert** | **186** | | |
 
 ## Rückverfolgbarkeit Anforderung → Testfälle
 
@@ -37,7 +37,7 @@ Dieser Katalog beschreibt jeden Testfall so, dass Außenstehende ihn ohne Blick 
 | REQ-10 Plan nur lesend | TC-K-14, TC-A-10-1 bis -3 |
 | REQ-11 Plan manuell korrigieren | TC-K-47 bis TC-K-62, TC-UI-03, TC-UI-05, TC-A-11-1 bis -3 |
 | REQ-14 Urlaub | TC-K-18, TC-K-36, TC-A-14-1 |
-| REQ-15 Plan veröffentlichen | TC-K-63 bis TC-K-79, TC-UI-06, TC-A-15-1a, -1b |
+| REQ-15 Plan veröffentlichen | TC-K-101 bis TC-K-103, TC-K-63 bis TC-K-79, TC-UI-06, TC-A-15-1a, -1b |
 | REQ-22 Öffnungstage | TC-K-43 bis TC-K-46, TC-A-22-1 |
 | QR-01 Laufzeit ≤ 10 s | TC-K-38, TC-A-QR01-1 |
 | QR-02 Mobil ab 360 px | TC-UI-02, TC-UI-06, TC-UI-07 |
@@ -259,6 +259,26 @@ Dieser Katalog beschreibt jeden Testfall so, dass Außenstehende ihn ohne Blick 
 | TC-K-99 | Vorbereitung schließt fremde Personen aus | Testplan TC-M | Person in Testunternehmen 1, dann `prepare_usertests` | 11 Abgaben in Nordlicht; keine Abgabe für fremde Person | SI | `test_preparation_excludes_foreign_employees` |
 | TC-K-100 | Migration erhält bestehende Daten | REQ-02 (ABW-03) | Daten im Schema vor `0007`, dann Migration | Monat und Konto Nordlicht zugeordnet; Plan-Revision, Veröffentlichung und Snapshot-Namen unverändert; Teamansicht erhalten | ZB | `CompanyMigrationTests.test_existing_users_assignments_and_publications_are_preserved` |
 
+### 2.11 Vorlauf vor Veröffentlichung und Fehlerpfade (`PublicationLeadTimeTests`, `ErrorPathTests`, PR #66)
+
+**Vorbedingung:** für TC-K-101 bis -103 wie 2.8 (Plan November 2026), Datum je Test gesetzt; für TC-K-104 bis -113 Demobetrieb aus `seed_demo`, Datum 20.10.2026, Planerin angemeldet.
+
+| ID | Testfall | Anf. | Eingabe / Schritte | Erwartetes Ergebnis (Orakel) | Verf. | Umsetzung |
+|---|---|---|---|---|---|---|
+| TC-K-101 | Genau 14 Tage Vorlauf: kein Hinweis | REQ-15 AK 1 (DEF-02) | Datum 18.10.2026, Veröffentlichungsseite | `lead_days` = 14; kein Hinweis | GW | `PublicationLeadTimeTests.test_exactly_14_days_before_start_shows_no_hint` |
+| TC-K-102 | 13 Tage Vorlauf: Hinweis, Veröffentlichen möglich | REQ-15 AK 1 (DEF-02) | Datum 19.10.2026; veröffentlichen ohne Bestätigung | „nur 13 Tage und damit weniger als 14 Tage vor Beginn“; keine Bestätigungspflicht; Veröffentlichung gespeichert | GW | `…test_13_days_before_start_shows_hint_and_publishing_stays_possible` |
+| TC-K-103 | 1 Tag bzw. nach Beginn: passende Formulierung | REQ-15 AK 1 (DEF-02) | Datum 31.10. bzw. 03.11.2026 | „nur 1 Tag und damit“ bzw. „erst nach Beginn des Planungsmonats“ | GW | `…test_one_day_and_after_start_use_matching_wording` |
+| TC-K-104 | Zeitraum: GET leitet um, ungültige Frist abgelehnt | REQ-05 | GET `/zeitraum/`; POST Frist „kein-datum“ | 302; Meldung „gültiges Datum“; Frist bleibt 28.10. | ÄK | `ErrorPathTests.test_period_get_redirects_and_invalid_deadline_is_rejected` |
+| TC-K-105 | Bedarf: Text und Werte außerhalb 0–30 abgelehnt | REQ-04 | Gesamtzahl „drei“, „31“, „-1“ | Meldung „ganze Zahlen“; Gesamtzahl bleibt 3 | GW | `…test_demand_rejects_text_and_out_of_range_values` |
+| TC-K-106 | Öffnungstage: GET leitet zur Bedarfsseite | REQ-22 | GET `/oeffnungstage/` | 302 auf `/bedarf/` | ÄK | `…test_opening_get_redirects_to_demand` |
+| TC-K-107 | Ungültige Plansicht abgelehnt | REQ-15 | Sichtbarkeit „alle“ | Meldung „gültige Plansicht“ | ÄK | `…test_invalid_visibility_is_rejected` |
+| TC-K-108 | Urlaub mit Ende vor Beginn abgelehnt | REQ-14 | Lea, 10.11. bis 09.11. | Formularfehler; kein Urlaub gespeichert | GW | `…test_vacation_end_before_start_is_rejected` |
+| TC-K-109 | Korrektur mit Person und Tausch zugleich abgelehnt | REQ-11 | Position mit `employee` und `swap` senden | Meldung „Person auswählen oder zwei Positionen tauschen“; keine Bestätigung | ET | `…test_correction_with_person_and_swap_at_once_is_rejected` |
+| TC-K-110 | Auffüllen ohne offene Positionen | REQ-09 | Plan ohne Lücken, „automatisch füllen“ | Meldung „Alle Positionen sind bereits besetzt.“ | ÄK | `…test_autofill_reports_when_everything_is_filled` |
+| TC-K-111 | Öffnungstage: kein Wochentag bzw. Tag außerhalb des Monats | REQ-22 | `set_opening` mit [] bzw. 06.12.2026 | `ValueError` „Mindestens ein Wochentag“ bzw. „im gewählten Planungsmonat“ | ÄK | `…test_set_opening_requires_weekday_and_day_in_month` |
+| TC-K-112 | Mitarbeitende: fremder Betrieb in `save_employee` | REQ-02, QR-03 | fremdes Unternehmen bzw. fremde Qualifikation | `ValueError` „Person/Qualifikation gehört zu einem anderen …“ | SI | `…test_save_employee_rejects_foreign_company_data` |
+| TC-K-113 | Besetzungsmix über Gesamtzahl bei Erzeugung | REQ-04, REQ-08 | Slot Gesamtzahl 1, Mindestzahl 2 | `ValueError` „Besetzungsmix übersteigt“ | GW | `…test_generation_rejects_mix_above_total` |
+
 ---
 
 ## 3 Automatisierte Akzeptanztests (TC-A, `tests/acceptance/test_akzeptanz.py`)
@@ -313,7 +333,7 @@ Abgedeckt sind alle 37 Akzeptanzkriterien der umgesetzten Anforderungen REQ-01 b
 | TC-A-QR04-1 | QR-04 AK 1 | das Verfügbarkeitsformular | – | enthält es nur Slot und Priorität, kein Freitextfeld für Gründe | `Qr03Qr04PrivacyTests.test_tc_a_qr04_1_availability_form_has_no_reason_field` |
 | TC-A-QR04-2 | QR-04 AK 2 | die Datenbank | – | gibt es kein Feld für Begründungen | `Qr03Qr04PrivacyTests.test_tc_a_qr04_2_no_reason_field_in_database` |
 
-**Anmerkungen:** REQ-10 AK 3 verlangt „keine Bearbeitungsfunktion im MVP“; dieser Teil ist durch REQ-11 (manuelle Korrektur, Sprint 1) überholt und wird im Anforderungsdokument angepasst – geprüft wird nur der weiterhin gültige Teil (kein Zugriff für Mitarbeitende). REQ-15 AK 1 wurde in zwei Tests geteilt, weil das Kriterium zwei unabhängige Bedingungen enthält; Teil 2 (Hinweis bei weniger als 14 Tagen Vorlauf) ist nicht umgesetzt und als erwarteter Fehlschlag markiert (Defekt DEF-02, siehe Testbericht P5).
+**Anmerkungen:** REQ-10 AK 3 verlangt „keine Bearbeitungsfunktion im MVP“; dieser Teil ist durch REQ-11 (manuelle Korrektur, Sprint 1) überholt und wird im Anforderungsdokument angepasst – geprüft wird nur der weiterhin gültige Teil (kein Zugriff für Mitarbeitende). REQ-15 AK 1 wurde in zwei Tests geteilt, weil das Kriterium zwei unabhängige Bedingungen enthält; Teil 2 (Hinweis bei weniger als 14 Tagen Vorlauf) war zunächst nicht umgesetzt und als erwarteter Fehlschlag markiert (Defekt DEF-02); seit PR #66 ist der Test grün.
 
 ---
 
