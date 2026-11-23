@@ -1,5 +1,6 @@
 @startuml
-title UML-Use-Case-Diagramm: ShiftPlanner (UC-01 bis UC-05, Stand Sprint 1)
+!pragma layout smetana
+title UML-Use-Case-Diagramm: ShiftPlanner (UC-01 bis UC-05, Stand 23.11.2026)
 
 left to right direction
 skinparam packageStyle rectangle
@@ -12,24 +13,32 @@ rectangle "ShiftPlanner" {
   usecase "UC-02 Planungsmonat und\nBedarf festlegen\n(Abgabefrist, Öffnungstage,\nBedarf, Urlaub)" as UC2
   usecase "UC-03 Verfügbarkeiten\nabgeben (Priorität 1–3)" as UC3
   usecase "UC-04 Schichtplan\nerzeugen" as UC4
-  usecase "UC-05 Schichtplan\nansehen (nur lesend)" as UC5
-  usecase "Plan manuell korrigieren\n(REQ-11, in Arbeit)" as UC6
-  usecase "Plan veröffentlichen\n(REQ-15, Sprint 2)" as UC7
+  usecase "UC-05 Schichtplan\nansehen" as UC5
+  usecase "Plan manuell korrigieren\nund auffüllen (REQ-11, REQ-09)" as UC6
+  usecase "Plan veröffentlichen\n(REQ-15)" as UC7
+  usecase "Eigenen veröffentlichten\nSchichtplan ansehen (REQ-15)" as UC8
 }
 
 chef --> UC1
 chef --> UC2
 chef --> UC4
 chef --> UC5
+chef --> UC7
 employee --> UC3
+employee --> UC8
 
 UC6 .> UC5 : <<extend>>
-UC7 .> UC5 : <<extend>>
 
 note right of UC4
-  Vorbedingung: Bedarf gespeichert und
-  alle haben abgegeben ODER Frist abgelaufen.
+  Vorbedingung: Bedarf gespeichert und aktive
+  Mitarbeitende; offene Abgaben werden
+  ausdrücklich bestätigt (auch vor Fristablauf).
   Prüft Urlaub, Überschneidung und ArbZG (RB-01).
+end note
+
+note right of UC7
+  Vorschau mit Bestätigung; Hinweis bei
+  weniger als 14 Tagen Vorlauf (REQ-15 AK 1).
 end note
 
 @enduml

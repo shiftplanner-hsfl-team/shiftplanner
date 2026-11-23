@@ -1,5 +1,6 @@
 @startuml
-title Aktivitätsdiagramm: Monatsablauf (Stand Sprint 1)
+!pragma layout smetana
+title Aktivitätsdiagramm: Monatsablauf (Stand 23.11.2026)
 
 |Chef / Planung|
 start
@@ -16,35 +17,50 @@ Mitarbeitende anlegen);
 :Verfügbarkeiten eintragen
 (Priorität 1–3, Entwurf);
 :Angaben abgeben;
-
-|System|
-if (Alle abgegeben oder Frist abgelaufen?) then (ja)
-  if (Frist abgelaufen?) then (ja)
-    :Eingabe für Mitarbeitende sperren;
-    note right: fehlende Angaben gelten\nals nicht verfügbar
-  else (nein)
-  endif
-  :Plan erzeugen
-  (Urlaub, Überschneidung, ArbZG prüfen);
-  :Plan als Snapshot speichern;
-else (nein)
-  :Warten auf Abgaben
-  oder Fristablauf;
-  detach
-endif
+note right: nach Fristablauf gesperrt;\nfehlende Angaben gelten\nals nicht verfügbar
 
 |Chef / Planung|
-:Plan prüfen (nur lesend);
-if (Korrektur nötig?) then (ja)
-  :Person ändern (REQ-11, in Arbeit);
-  if (Verstoß gegen ArbZG?) then (ja)
-    :Änderung blockiert (E-01);
-  else (nein)
-    :speichern, ggf. Hinweis;
-  endif
+if (Alle abgegeben?) then (ja)
 else (nein)
+  :Offene Abgaben prüfen und
+  Erzeugung ausdrücklich bestätigen
+  (vor oder nach Fristablauf);
 endif
-:Plan veröffentlichen (REQ-15, Sprint 2);
+
+|System|
+:Plan erzeugen
+(Urlaub, Überschneidung, ArbZG prüfen);
+:Entwurf speichern
+(unbesetzt = ohne Person);
+
+|Chef / Planung|
+:Entwurf prüfen;
+repeat
+  if (Lücken vorhanden?) then (ja)
+    :Unbesetzte automatisch auffüllen
+    (nur offene Positionen);
+  else (nein)
+  endif
+  if (Korrektur nötig?) then (ja)
+    :Person ändern oder tauschen
+    (Vorschau mit Hinweisen);
+    if (Verstoß gegen ArbZG?) then (ja)
+      :Änderung blockiert (E-01);
+    else (nein)
+      :bestätigen und speichern;
+    endif
+  else (nein)
+  endif
+repeat while (weitere Änderungen?) is (ja) not (nein)
+:Veröffentlichung prüfen
+(Vorschau: unbesetzt, veraltet,
+Hinweis bei < 14 Tagen Vorlauf);
+:Plan veröffentlichen
+(Bestätigung bei Hinweisen);
+
+|Mitarbeitende|
+:Eigenen Schichtplan ansehen
+(oder Teamplan, falls freigegeben);
 stop
 
 @enduml
