@@ -1,35 +1,51 @@
 @startuml
-title UML-Use-Case-Diagramm: ShiftPlanner (UC-01 bis UC-05, Stand Sprint 1)
-
+!pragma layout smetana
+title UML-Use-Case-Diagramm: ShiftPlanner (Stand 23.11.2026)
 left to right direction
 skinparam packageStyle rectangle
 
 actor "Chef / Planung" as chef
 actor "Mitarbeitende" as employee
-
-rectangle "ShiftPlanner" {
+rectangle "ShiftPlanner – Daten des eigenen Betriebs" {
   usecase "UC-01 Betrieb einrichten\n(Vorlagen, Qualifikationen,\nMitarbeitende anlegen)" as UC1
   usecase "UC-02 Planungsmonat und\nBedarf festlegen\n(Abgabefrist, Öffnungstage,\nBedarf, Urlaub)" as UC2
   usecase "UC-03 Verfügbarkeiten\nabgeben (Priorität 1–3)" as UC3
   usecase "UC-04 Schichtplan\nerzeugen" as UC4
-  usecase "UC-05 Schichtplan\nansehen (nur lesend)" as UC5
-  usecase "Plan manuell korrigieren\n(REQ-11, in Arbeit)" as UC6
-  usecase "Plan veröffentlichen\n(REQ-15, Sprint 2)" as UC7
+  usecase "UC-05 Schichtplan\nansehen" as UC5
+  usecase "Plan manuell korrigieren\n(REQ-11)" as correction
+  usecase "Freie Positionen\nautomatisch auffüllen" as autofill
+  usecase "Plan prüfen und veröffentlichen\n(REQ-15)" as publish
+  usecase "Plansicht für Mitarbeitende festlegen\n(eigene Schichten / Teamplan, REQ-15)" as visibility
 }
-
 chef --> UC1
 chef --> UC2
 chef --> UC4
 chef --> UC5
+chef --> correction
+chef --> autofill
+chef --> publish
+chef --> visibility
 employee --> UC3
-
-UC6 .> UC5 : <<extend>>
-UC7 .> UC5 : <<extend>>
+employee --> UC5
+correction .> UC5 : <<extend>>
+autofill .> UC5 : <<extend>>
+publish .> UC5 : <<extend>>
 
 note right of UC4
-  Vorbedingung: Bedarf gespeichert und
-  alle haben abgegeben ODER Frist abgelaufen.
-  Prüft Urlaub, Überschneidung und ArbZG (RB-01).
+  Bedarf gespeichert, positive Positionenzahl,
+  aktive Mitarbeitende vorhanden.
+  Offene Abgaben vor Erzeugung ausdrücklich bestätigen,
+  unabhängig vom Ablauf der Abgabefrist.
+  Urlaub, Überschneidung und ArbZG werden geprüft.
 end note
-
+note right of UC5
+  Planung: bearbeitbaren Entwurf ansehen.
+  Mitarbeitende: letzten veröffentlichten Stand ansehen,
+  eigene Schichten oder freigegebenen Teamplan.
+  Kein Zugriff auf private Wünsche anderer Personen.
+end note
+note bottom of UC3
+  Eigenen Entwurf speichern und Monatsangaben abgeben.
+  Nur bei geöffnetem Zeitraum bis einschließlich zur Abgabefrist.
+end note
 @enduml

@@ -1,5 +1,7 @@
 # Review der Entwurfsdiagramme (P3)
 
+> **Hinweis (23.11.2026):** Diese Vorlage aus P3 wurde nie ausgefüllt; die Reviews erfolgten direkt in GitHub. Sie bleibt als Nachweis erhalten und ist durch `review_richtlinie.md` und `review_ergebnisse_p5.md` (Abschnitt 1.4) ersetzt.
+
 **Reviewer:** Anil Duth (QS) · **Autor der Diagramme:** Mahdi Fazeli · **Datum:** __.__.2026
 **Gegenstand:** `docs/design/` Abb. 1–6 · **Ergebnis:** ☐ freigegeben ☐ mit Auflagen ☐ Änderungen nötig
 

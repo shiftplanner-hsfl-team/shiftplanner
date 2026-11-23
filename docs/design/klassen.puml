@@ -1,5 +1,6 @@
 @startuml
-title UML-Klassendiagramm: 12 Domänenklassen (Stand Sprint 1, 10.11.2026)
+!pragma layout smetana
+title UML-Klassendiagramm: 17 Domänenklassen (Stand 23.11.2026, inkl. REQ-15 und Betriebstrennung)
 
 skinparam classAttributeIconSize 0
 hide empty methods
@@ -11,25 +12,38 @@ class User <<Django>> {
   +is_active: bool
 }
 
+class Company {
+  +name: str
+  +slug: str {unique}
+  +branch: str
+}
+
+class CompanyAccount {
+}
+
+class PlanningSettings {
+  +show_team_plan: bool
+}
+
 class Employee {
   +contract_type: str {vollzeit, teilzeit, studierende, minijob}
-  +weekly_hours: decimal [1..48]
+  +weekly_hours: decimal [0..1] {1..48}
 }
 
 class Qualification {
-  +name: str {unique}
+  +name: str {unique je Company}
   +description: str
 }
 
 class ShiftTemplate {
-  +name: str {unique}
+  +name: str {unique je Company}
   +start: time
   +end: time
   +description: str
 }
 
 class Month {
-  +date: date {unique, Monatserster}
+  +date: date {unique je Company, Monatserster}
   +revision: int
   +demand_saved: bool
   +deadline: date [0..1]
@@ -82,7 +96,32 @@ class Assignment {
   +employee_name: str
 }
 
-User "1" -- "1" Employee : Konto
+class PublishedPlan {
+  +published_at: datetime
+  +source_fingerprint: str
+  +source_input_revision: int
+}
+
+class PublishedAssignment {
+  +position: int
+  +role: str
+  .. Snapshot ..
+  +date: date
+  +shift_name: str
+  +start: time
+  +end: time
+  +employee_name: str
+}
+
+User "1" -- "0..1" CompanyAccount : Zuordnung
+CompanyAccount "*" --> "1" Company : gehört zu
+Company "1" -- "0..1" PlanningSettings : Plansicht
+Company "1" -- "*" Employee : beschäftigt
+Company "1" -- "*" Qualification : definiert
+Company "1" -- "*" ShiftTemplate : definiert
+Company "1" -- "*" Month : plant
+
+User "1" -- "0..1" Employee : Konto
 Employee "*" -- "*" Qualification : besitzt
 Employee "1" -- "*" Availability : trägt ein
 Employee "1" -- "*" Submission : gibt ab
@@ -101,10 +140,28 @@ Plan "1" *-- "*" Assignment : enthält
 Assignment "*" --> "1" Slot : besetzt
 Assignment "*" --> "0..1" Employee : weist zu
 
+Month "1" -- "0..1" PublishedPlan : veröffentlicht
+PublishedPlan "*" --> "0..1" User : published_by
+PublishedPlan "1" *-- "*" PublishedAssignment : enthält
+PublishedAssignment "*" --> "0..1" Employee : weist zu
+
 note right of Assignment
   employee = NULL bedeutet „unbesetzt“ (REQ-09).
   Datum, Zeiten und Namen als Snapshot,
   damit ältere Pläne lesbar bleiben.
+end note
+
+note right of PublishedPlan
+  Unabhängige Kopie des Plans zum
+  Zeitpunkt der Veröffentlichung (REQ-15):
+  Korrekturen am Entwurf ändern sie nicht.
+  Erneutes Veröffentlichen ersetzt sie atomar.
+end note
+
+note bottom of Company
+  Betriebstrennung (REQ-02, ABW-03): Stammdaten
+  und Monate gehören genau einem Betrieb;
+  ein Konto ohne Zuordnung hat keinen Planungszugriff.
 end note
 
 note bottom of Month

@@ -1,6 +1,7 @@
 # Architektur ShiftPlanner
 
-Stand: 09.11.2026 (Sprint 1). Verantwortlich: Architektur und Entwurf (Mahdi Fazeli).
+Stand: 23.11.2026 (P5). Verantwortlich: Architektur und Entwurf (Mahdi Fazeli),
+ab 23.11.2026 vertretungsweise Bennet Schalow.
 Der erste Prototyp (P3) wurde mit Codex, die Sprint-1-Erweiterungen mit Claude als
 Hilfswerkzeug erstellt; jede Änderung wurde per Pull Request im Team reviewt.
 Diagramme: `docs/design/*.puml` (Komponenten, Klassen, ER, Sequenz, Aktivität, Use Cases).
@@ -9,7 +10,12 @@ Diagramme: `docs/design/*.puml` (Komponenten, Klassen, ER, Sequenz, Aktivität, 
 
 Wir verwenden eine **Schichtenarchitektur** (Darstellung → Zugriff und Abläufe →
 Planung → Persistenz) innerhalb einer serverseitig gerenderten Django-Anwendung
-(Client-Server). Jede Schicht ruft nur die darunterliegende auf. Gründe: Das Team
+(Client-Server). Die Fachmodule sind unabhängig von HTTP und den Views; das
+Regelmodul ist zusätzlich unabhängig vom ORM. Views und Forms greifen für
+Abfragen und Validierung auch direkt auf Models zu. Es handelt sich daher nicht
+um eine strikt auf benachbarte Schichten beschränkte Architektur. Der Renderfluss
+von Views zu Templates ist von diesen Python-Modulabhängigkeiten zu unterscheiden.
+Gründe: Das Team
 kennt Python; Django liefert Anmeldung, CSRF-Schutz, ORM und Administration, sodass
 die Arbeit auf die Planungslogik entfällt. Die Planungslogik ist frei von HTTP und
 damit ohne Browser testbar. Das Regelmodul für gesetzliche Rahmenbedingungen ist eine
@@ -26,21 +32,34 @@ ungespeicherter Eingaben. Kein externer Dienst wird zur Laufzeit aufgerufen.
 
 | Schicht | Dateien | Verantwortung |
 |---|---|---|
-| Darstellung | `templates/planning/`, `static/planning/` | Desktop/Mobil, Formulare, Feedback |
-| Zugriff und Abläufe | `views.py`, `forms.py` | Anmeldung, Rollen, Validierung, Transaktionen |
+| Darstellung | `templates/planning/`, `static/planning/`, `templatetags/planning_extras.py` | Desktop/Mobil, Formulare, Feedback, Feiertagsfilter |
+| Zugriff und Abläufe | `shiftplanner/urls.py`, `views.py`, `forms.py` | Routing, Anmeldung, Rollen- und Betriebsprüfung, Validierung, Ablaufsteuerung |
 | Planung | `services.py` | Monatsaufbau, Öffnungstage, Abgabefrist, Vorbedingungen, deterministische Zuordnung, Mitarbeiteranlage |
+| Planung | `corrections.py` | Vorschau, Konfliktprüfung und atomare manuelle Korrektur |
+| Planung | `autofill.py` | Freie Positionen ergänzen, bestehende Besetzungen erhalten |
+| Planung | `publications.py` | Veröffentlichungsprüfung, unabhängiger Snapshot, Plansicht und Wochenraster |
 | Regeln | `rules.py` | Arbeitszeitgesetz (RB-01), Feiertage Schleswig-Holstein (RB-03); ohne Datenbankzugriff |
-| Persistenz | `models.py`, `migrations/` | SQLite, Beziehungen, Constraints, Plansnapshot |
-| Qualität | `tests.py`, `tests/ui/` | Logik, HTTP-Zugriffe, Browserabläufe |
+| Persistenz | `models.py`, `migrations/` | Django-ORM, Beziehungen, Constraints, Entwurf und Veröffentlichung; SQLite lokal, PostgreSQL in der Online-Demo |
+| Qualität | `apps/planning/tests.py`, `apps/planning/test_companies.py`, `tests/unit/`, `tests/acceptance/`, `tests/ui/`, `tests/postgres_settings.py` | Regeln, Komponenten, Akzeptanzkriterien, Betriebsgrenzen, Migration, Browser; Backend zusätzlich mit PostgreSQL 18 in CI |
+
+`views.py` importiert die Fachmodule, Forms, Models und Regeln. Forms greifen auf
+Models zu; `corrections.py` und `autofill.py` verwenden Models, Regeln und gemeinsame
+Funktionen aus Services. `publications.py` verwendet Models und lädt für das
+Wochenraster die Kalenderfunktionen `dates_for_month` und `today` aus Services.
+Services verwenden
+Models und Regeln. Keines dieser Fachmodule importiert Views oder Forms. Der
+Feiertagsfilter der Darstellung verwendet ausschließlich `rules.holiday_name()`.
 
 ## Daten und Zugriffe
 
 - Company: eigener Betrieb; Stammdaten und Planungsmonate gehören genau einem Betrieb.
-- CompanyAccount: genau ein Betrieb pro Anmeldung; ohne Zuordnung kein Planungszugriff.
+- CompanyAccount: genau ein Betrieb pro zugeordnetem Konto; ohne Zuordnung kein Planungszugriff.
 - User: Django-Konto. Die Gruppe `Planung` erhält Planungszugriff.
-- Employee: Mitarbeitendenprofil mit beliebig vielen Qualifikationen, Vertragsart
+- Employee: optionales Mitarbeitendenprofil eines Kontos (User 1 zu Employee 0..1),
+  mit beliebig vielen Qualifikationen, Vertragsart
   (Vollzeit, Teilzeit, Studierende, Minijob) und Wochenstunden 1–48 (REQ-02).
   Die Planung legt Personen inklusive Konto selbst an (`save_employee`).
+- Qualification: Rolle oder Qualifikation mit einem innerhalb des Betriebs eindeutigen Namen.
 - ShiftTemplate: Name, Anfang, Ende. Ende muss am selben Tag nach Anfang liegen.
 - Month: Planungsmonat mit Bedarfsstatus, Revisionszähler, Abgabefrist (REQ-05,
   Status „nicht geöffnet / offen / geschlossen“) und geöffneten Wochentagen (REQ-22).
@@ -69,7 +88,10 @@ Django schützt Formulare mit CSRF; Abmelden erfolgt per POST.
 
 1. Vorbedingungen prüfen (`readiness`): gespeicherter Bedarf, positive
    Positionenzahl und mindestens eine aktive Person. Offene Monatsabgaben müssen
-   vor der Erzeugung geprüft und ausdrücklich bestätigt werden.
+   vor der Erzeugung geprüft und ausdrücklich bestätigt werden
+   (`confirm_incomplete=yes` in der View, `allow_incomplete=True` im Service).
+   Dies gilt vor und nach Ablauf der Abgabefrist. Die Frist steuert die
+   Verfügbarkeitseingabe, nicht die Erlaubnis zur bestätigten Planerzeugung.
 2. Slots chronologisch nach Datum, Beginn und stabiler ID bearbeiten.
 3. Bedarf in einzelne Positionen mit Qualifikationsvorgabe auflösen; Rest ohne Vorgabe.
 4. Kandidaten filtern (`is_eligible`): keine positive Slot-Verfügbarkeit, Urlaub,
@@ -82,8 +104,10 @@ Django schützt Formulare mit CSRF; Abmelden erfolgt per POST.
 6. Bei gleichen Kosten entscheidet die feste Reihenfolge der Personen- und
    Positions-IDs. Angrenzende Schichten ohne zeitliche Überlappung sind möglich,
    solange die Tageshöchstarbeitszeit eingehalten wird.
-7. Ergebnisse atomar als Snapshot speichern. Fehlende Personen bleiben `NULL`
-   und erscheinen ausdrücklich als „Unbesetzt“.
+7. Plan atomar anlegen oder aktualisieren und dessen bisherige Entwurfspositionen
+   durch neue Assignments ersetzen. Fehlende Personen bleiben `NULL` und erscheinen
+   ausdrücklich als „Unbesetzt“. Ein vorhandener Veröffentlichungssnapshot bleibt
+   unverändert; Mitarbeitende sehen eine Neuberechnung erst nach erneutem Veröffentlichen.
 
 Die Prioritätsoptimierung erfolgt **je chronologisch bearbeitetem Slot**.
 Es handelt sich nicht um eine globale Optimierung des ganzen Monats. Frühe
@@ -115,15 +139,18 @@ die Position bleibt „unbesetzt“.
 
 ## Offene technische Grenzen
 
-Mehrere getrennte Betriebe je Installation; ein Betrieb pro Konto. SQLite und der Django-
-Entwicklungsserver sind für den lokalen Prototyp gewählt. Parallele Änderungen
-und Planerzeugungen sind durch Transaktionen gekapselt; ein Mehrbenutzer-
-Produktivbetrieb benötigt eine gesonderte Last-/Nebenläufigkeitsprüfung und eine
-geeignete Serverdatenbank. Es gibt keine öffentliche Registrierung,
+Mehrere getrennte Betriebe je Installation; ein Betrieb pro Konto. SQLite und der
+Django-Entwicklungsserver dienen der lokalen Entwicklung. Die Online-Demo verwendet
+PostgreSQL und Gunicorn; diese Konfiguration liegt auf `deploy/render-demo`.
+Der zusätzliche CI-Job verwendet PostgreSQL 18 über `tests/postgres_settings.py`.
+Transaktionen kapseln Mehrfachänderungen. Zeilensperren über `select_for_update()`
+wirken auf PostgreSQL; SQLite bietet diese Zeilensperren nicht. Ein Mehrbenutzer-
+Produktivbetrieb benötigt weiterhin eine gesonderte Last-/Nebenläufigkeitsprüfung.
+Es gibt keine öffentliche Registrierung,
 Passwort-Zurücksetzung oder Audit-Historie. Fachlich vollständige Arbeitszeit-
 und Datenschutzfreigabe sind nicht Gegenstand dieses Implementierungsnachweises.
 
-## Veröffentlichung (REQ-15, lokale Erweiterung)
+## Veröffentlichung (REQ-15)
 
 `publications.py` trennt den bearbeitbaren Plan vom letzten freigegebenen Stand.
 `PublishedPlan` und `PublishedAssignment` speichern den Zeitpunkt, das Planungskonto
@@ -150,3 +177,25 @@ Vorlagen- und Qualifikationsnamen sowie Monate sind innerhalb eines Betriebs ein
 
 `seed_test_companies` ergänzt drei leere Betriebe mit je einem Planungskonto.
 Die idempotente Demo-Initialisierung ersetzt weder Kennwörter noch vorhandene Inhalte.
+
+## Diagramme und Nacharbeit aus Inspektion #58
+
+Klassen- und ER-Diagramm bilden seit PR #60 alle 17 App-Modellklassen bzw. die
+18 App-Tabellen einschließlich der automatischen M:N-Tabelle ab. `User` bzw.
+`auth_user` ist zusätzlich als Django-Referenz enthalten. Die übrigen Diagramme
+zeigen die aktuellen Fachmodule und Abläufe aus PR #41 und #46: bestätigte
+Erzeugung trotz offener Abgaben, Auffüllen freier Positionen, Korrektur mit Vorschau,
+Veröffentlichung mit signierter Prüfung und die getrennte Leseansicht für Mitarbeitende.
+
+Die Quellen stehen in `docs/design/*.puml`, die PNGs in `docs/design/png/`.
+Die Exporte werden lokal mit PlantUML v1.2026.10 erzeugt. Komponenten-, Klassen-,
+ER- und Use-Case-Diagramm wählen Smetana in ihrer Quelle; die Sequenz- und
+Aktivitätsdiagramme verwenden ihre eingebauten Layouts. Beispiel vom Repository-Stamm:
+
+```sh
+java -Djava.awt.headless=true -jar /pfad/zu/plantuml.jar -charset UTF-8 -failfast2 -tpng -o png docs/design/*.puml
+```
+
+Nach Änderungen werden die Exporte visuell und über die eingebetteten
+PlantUML-Quellen geprüft. Die fachliche Freigabe und der Abschluss der Inspektion
+erfolgen durch die Moderation im Issue #58.
